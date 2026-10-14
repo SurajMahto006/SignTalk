@@ -22,20 +22,29 @@ function peersInRoom(roomId, except) {
   return [...set].filter((ws) => ws !== except && ws.readyState === WebSocket.OPEN);
 }
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+  const clientIp = req.socket.remoteAddress;
+  console.log(`[signaling] connect from ${clientIp}`);
+
   ws.on('message', (raw) => {
     let msg;
     try {
       msg = JSON.parse(raw.toString());
     } catch {
+      console.log(`[signaling] ignore non-JSON from ${clientIp}`);
       return;
     }
+
+    const msgType = msg.type ?? 'unknown';
 
     if (msg.type === 'join' && msg.room) {
       ws.room = msg.room;
       if (!rooms.has(msg.room)) rooms.set(msg.room, new Set());
       rooms.get(msg.room).add(ws);
       const others = peersInRoom(msg.room, ws);
+      console.log(
+        `[signaling] join room=${msg.room} from=${clientIp} peers=${others.length}`,
+      );
       ws.send(JSON.stringify({ type: 'joined', room: msg.room, peers: others.length }));
       for (const peer of others) {
         peer.send(JSON.stringify({ type: 'peer_joined', room: msg.room }));
@@ -43,16 +52,30 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    if (!ws.room) return;
+    if (!ws.room) {
+      console.log(`[signaling] ${msgType} before join from ${clientIp} (ignored)`);
+      return;
+    }
+
+    console.log(`[signaling] relay ${msgType} room=${ws.room} from=${clientIp}`);
     for (const peer of peersInRoom(ws.room, ws)) {
       peer.send(raw.toString());
     }
   });
 
-  ws.on('close', () => {
+  ws.on('close', (code, reason) => {
+    const room = ws.room ?? '(none)';
+    const reasonText = reason?.toString() || '';
+    console.log(
+      `[signaling] close from=${clientIp} room=${room} code=${code} reason=${reasonText || '(empty)'}`,
+    );
     if (!ws.room || !rooms.has(ws.room)) return;
     rooms.get(ws.room).delete(ws);
     if (rooms.get(ws.room).size === 0) rooms.delete(ws.room);
+  });
+
+  ws.on('error', (err) => {
+    console.log(`[signaling] socket error from ${clientIp}: ${err.message}`);
   });
 });
 

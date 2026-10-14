@@ -27,6 +27,8 @@ class WebRtcCallService extends ChangeNotifier {
   String? _roomId;
   bool _isHost = false;
   bool _makingOffer = false;
+  int _signalingGeneration = 0;
+  bool _signalingJoined = false;
 
   final RTCVideoRenderer localRenderer = RTCVideoRenderer();
   final RTCVideoRenderer remoteRenderer = RTCVideoRenderer();
@@ -56,8 +58,10 @@ class WebRtcCallService extends ChangeNotifier {
     required bool asHost,
   }) async {
     await hangUp(notify: false);
+    final session = _signalingGeneration;
     _roomId = roomId.trim();
     _isHost = asHost;
+    _signalingJoined = false;
     errorMessage = null;
     statusMessage = 'Connecting to signaling…';
     connectionState = CallConnectionState.connecting;
@@ -66,18 +70,47 @@ class WebRtcCallService extends ChangeNotifier {
     try {
       await ensureRenderers();
       final uri = Uri.parse(signalingUrl.trim());
+      _logSignaling('connect attempt uri=$uri room=$_roomId host=$asHost');
       _channel = WebSocketChannel.connect(uri);
+      try {
+        await _channel!.ready;
+      } catch (e) {
+        if (session != _signalingGeneration) return;
+        _fail(
+          'Signaling unreachable at $uri. '
+          'Check server, Wi‑Fi, and Windows Firewall (TCP ${uri.port}). Error: $e',
+        );
+        return;
+      }
+      if (session != _signalingGeneration) return;
+      _logSignaling('websocket open uri=$uri');
+
       _signalSub = _channel!.stream.listen(
         _onSignalMessage,
-        onError: (Object e) => _fail('Signaling error: $e'),
+        onError: (Object e) {
+          if (session != _signalingGeneration) return;
+          _fail('Signaling error: $e');
+        },
         onDone: () {
-          if (connectionState != CallConnectionState.ended) {
-            statusMessage = 'Signaling disconnected';
+          if (session != _signalingGeneration) return;
+          if (connectionState == CallConnectionState.ended) return;
+          final code = _channel?.closeCode;
+          final reason = _channel?.closeReason;
+          final detail = _formatCloseDetail(code, reason);
+          if (!_signalingJoined) {
+            _fail(
+              'Signaling closed before joining the room$detail. '
+              'If the phone uses ws://127.0.0.1, switch to your PC LAN IP.',
+            );
+          } else {
+            statusMessage = 'Signaling disconnected$detail';
             notifyListeners();
           }
         },
       );
+
       _send({'type': 'join', 'room': _roomId});
+      _logSignaling('sent join room=$_roomId');
       statusMessage = asHost ? 'Waiting for guest to join…' : 'Waiting for host offer…';
       notifyListeners();
 
@@ -85,7 +118,22 @@ class WebRtcCallService extends ChangeNotifier {
         await _preparePeerConnection();
       }
     } catch (e) {
+      if (session != _signalingGeneration) return;
       _fail('Could not connect signaling: $e');
+    }
+  }
+
+  static String _formatCloseDetail(int? code, String? reason) {
+    if (code == null && (reason == null || reason.isEmpty)) return '';
+    final parts = <String>[];
+    if (code != null) parts.add('code=$code');
+    if (reason != null && reason.isNotEmpty) parts.add('reason=$reason');
+    return ' (${parts.join(', ')})';
+  }
+
+  void _logSignaling(String message) {
+    if (kDebugMode) {
+      debugPrint('[SignTalk signaling] $message');
     }
   }
 
@@ -198,12 +246,16 @@ class WebRtcCallService extends ChangeNotifier {
   void _onSignalMessage(dynamic raw) {
     try {
       final msg = jsonDecode(raw as String) as Map<String, dynamic>;
-      switch (msg['type']) {
+      final type = msg['type']?.toString() ?? 'unknown';
+      _logSignaling('recv type=$type room=$_roomId');
+      switch (type) {
         case 'joined':
+          _signalingJoined = true;
           peersInRoom = (msg['peers'] as num?)?.toInt() ?? 0;
           statusMessage = 'In room $_roomId ($peersInRoom other peer(s))';
           notifyListeners();
         case 'peer_joined':
+          _signalingJoined = true;
           peersInRoom += 1;
           statusMessage = 'Peer joined room $_roomId';
           notifyListeners();
@@ -223,6 +275,8 @@ class WebRtcCallService extends ChangeNotifier {
   }
 
   void _send(Map<String, dynamic> message) {
+    final type = message['type']?.toString() ?? 'unknown';
+    _logSignaling('send type=$type room=$_roomId');
     _channel?.sink.add(jsonEncode(message));
   }
 
@@ -262,6 +316,8 @@ class WebRtcCallService extends ChangeNotifier {
   }
 
   Future<void> hangUp({bool notify = true}) async {
+    _signalingGeneration++;
+    _signalingJoined = false;
     await _signalSub?.cancel();
     _signalSub = null;
     await _channel?.sink.close();

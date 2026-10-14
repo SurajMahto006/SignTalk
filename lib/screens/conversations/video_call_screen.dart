@@ -35,12 +35,27 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   @override
   void initState() {
     super.initState();
+    _applyDefaultSignalingUrl();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await SignTalkScope.of(context).cameraPreview.stop();
       await _call.ensureRenderers();
       if (mounted) setState(() {});
     });
     _captions.addListener(_syncCaptionsToField);
+  }
+
+  /// Uses the page hostname on LAN so phones do not keep `ws://127.0.0.1`.
+  void _applyDefaultSignalingUrl() {
+    final pageHost = Uri.base.host;
+    if (pageHost.isEmpty) return;
+    final loopback = pageHost == 'localhost' || pageHost == '127.0.0.1';
+    final suggested = loopback
+        ? WebRtcCallService.defaultSignalingUrl
+        : 'ws://$pageHost:8765';
+    final current = _signalUrlController.text.trim();
+    if (current.isEmpty || current == WebRtcCallService.defaultSignalingUrl) {
+      _signalUrlController.text = suggested;
+    }
   }
 
   void _syncCaptionsToField() {
@@ -317,7 +332,9 @@ class _LobbyPanel extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           const Text(
-            'Run tools/signaling-server on your PC. Phone must use your PC LAN IP, same Wi‑Fi.',
+            'Run tools/signaling-server on your PC (listens on 0.0.0.0:8765). '
+            'Phone opens the app via your PC LAN IP; signaling URL should match that IP. '
+            'If join fails, allow inbound TCP 8765 on Private networks in Windows Firewall.',
             style: TextStyle(fontSize: 11, color: SignTalkColors.secondaryText),
           ),
         ],
