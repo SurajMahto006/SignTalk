@@ -1,0 +1,11 @@
+{
+  "name": "signtalk-signaling",
+  "private": true,
+  "description": "Minimal WebSocket room relay for SignTalk WebRTC (run locally on your PC).",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

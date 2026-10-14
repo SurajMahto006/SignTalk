@@ -1,0 +1,523 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>SignTalk - Video Call</title>
+<!-- Tailwind CSS v3 with forms and container queries plugins -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Google Fonts: Inter -->
+<link href="https://fonts.googleapis.com" rel="preconnect">
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+          },
+          colors: {
+            signtalk: {
+              blue: '#007AFF',
+              'blue-light': '#EBF5FF',
+              'blue-hover': '#0062CC',
+              bg: '#F5F5F7',
+              surface: '#FFFFFF',
+              border: '#E5E5EA',
+              'text-primary': '#1D1D1F',
+              'text-secondary': '#6E6E73',
+              green: '#34C759',
+              red: '#FF3B30',
+              'red-dark': '#D70015',
+            }
+          },
+          boxShadow: {
+            'ios-card': '0 2px 10px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02)',
+            'ios-elevated': '0 12px 28px rgba(0, 0, 0, 0.08), 0 4px 10px rgba(0, 0, 0, 0.04)',
+            'pip': '0 8px 24px rgba(0, 0, 0, 0.16)'
+          }
+        }
+      }
+    }
+  </script>
+<style data-purpose="base-typography">
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+      -webkit-font-smoothing: antialiased;
+      background-color: #E5E7EB;
+    }
+  </style>
+<style data-purpose="custom-utilities">
+    /* Subtle pulse animation for outgoing call ringing indicator */
+    @keyframes gentlePulse {
+      0%, 100% {
+        transform: scale(1);
+        opacity: 0.35;
+      }
+      50% {
+        transform: scale(1.15);
+        opacity: 0.15;
+      }
+    }
+    .call-pulse-ring {
+      animation: gentlePulse 2.4s ease-in-out infinite;
+    }
+    .call-pulse-ring-delayed {
+      animation: gentlePulse 2.4s ease-in-out infinite 0.7s;
+    }
+  </style>
+</head>
+<body class="flex items-center justify-center min-h-screen py-4 sm:py-8 select-none">
+<!-- BEGIN: PhoneShellWrapper -->
+<!-- Container mimicking iPhone 15 Pro standard viewport (393px × 852px) -->
+<main class="w-[393px] h-[852px] bg-[#F5F5F7] text-[#1D1D1F] rounded-[48px] shadow-2xl border-[8px] border-[#1C1C1E] relative flex flex-col overflow-hidden">
+<!-- BEGIN: iOSStatusBar -->
+<header class="w-full pt-3 px-7 flex justify-between items-center z-50 shrink-0 bg-transparent" data-purpose="ios-status-bar">
+<!-- Time -->
+<span class="text-[15px] font-semibold tracking-tight text-[#1D1D1F]">9:41</span>
+<!-- Dynamic Island Mockup -->
+<div class="w-28 h-6 bg-black rounded-full mx-auto -mt-1 flex items-center justify-between px-2.5">
+<span class="w-2.5 h-2.5 rounded-full bg-emerald-500/80 animate-pulse"></span>
+<span class="w-2 h-2 rounded-full bg-[#1C1C1E]"></span>
+</div>
+<!-- Network, WiFi & Battery Icons -->
+<div class="flex items-center space-x-1.5 text-[#1D1D1F]">
+<!-- Cellular Signal -->
+<svg aria-hidden="true" class="w-4 h-3.5" fill="currentColor" viewBox="0 0 17 12">
+<rect height="4" rx="0.5" width="2.5" x="0" y="8"></rect>
+<rect height="6" rx="0.5" width="2.5" x="4.5" y="6"></rect>
+<rect height="9" rx="0.5" width="2.5" x="9" y="3"></rect>
+<rect height="12" rx="0.5" width="2.5" x="13.5" y="0"></rect>
+</svg>
+<!-- Wi-Fi -->
+<svg aria-hidden="true" class="w-4 h-3.5" fill="currentColor" viewBox="0 0 16 12">
+<path d="M8 2.5C10.6 2.5 12.9 3.6 14.5 5.3L16 3.8C14 1.7 11.2 0.5 8 0.5C4.8 0.5 2 1.7 0 3.8L1.5 5.3C3.1 3.6 5.4 2.5 8 2.5ZM8 6.5C9.7 6.5 11.2 7.2 12.3 8.3L13.8 6.8C12.3 5.3 10.3 4.5 8 4.5C5.7 4.5 3.7 5.3 2.2 6.8L3.7 8.3C4.8 7.2 6.3 6.5 8 6.5ZM8 10.5C8.8 10.5 9.5 11.2 9.5 12C9.5 12.8 8.8 13.5 8 13.5C7.2 13.5 6.5 12.8 6.5 12C6.5 11.2 7.2 10.5 8 10.5Z"></path>
+</svg>
+<!-- Battery -->
+<div class="w-5 h-2.5 border border-[#1D1D1F] rounded-[3px] p-[1px] flex items-center">
+<div class="w-full h-full bg-[#1D1D1F] rounded-[1.5px]"></div>
+</div>
+</div>
+</header>
+<!-- END: iOSStatusBar -->
+<!-- BEGIN: PrototypeInteractiveStateSwitcher -->
+<!-- Allows reviewer to evaluate all 4 requested call states -->
+<nav aria-label="Prototype Call State Selector" class="px-4 py-1.5 shrink-0 z-40 bg-[#F5F5F7] border-b border-[#E5E5EA]">
+<div class="bg-[#E5E5EA]/70 p-0.5 rounded-lg flex text-[11px] font-medium text-[#6E6E73]">
+<button class="flex-1 py-1 rounded-md bg-white text-[#1D1D1F] font-semibold shadow-sm transition-all text-center" id="tab-active" onclick="switchState('active')">
+          Active Call
+        </button>
+<button class="flex-1 py-1 rounded-md hover:text-[#1D1D1F] transition-all text-center" id="tab-incoming" onclick="switchState('incoming')">
+          Incoming
+        </button>
+<button class="flex-1 py-1 rounded-md hover:text-[#1D1D1F] transition-all text-center" id="tab-outgoing" onclick="switchState('outgoing')">
+          Outgoing
+        </button>
+<button class="flex-1 py-1 rounded-md hover:text-[#1D1D1F] transition-all text-center" id="tab-ended" onclick="switchState('ended')">
+          Ended
+        </button>
+</div>
+</nav>
+<!-- END: PrototypeInteractiveStateSwitcher -->
+<!-- BEGIN: ScreenStateContainer -->
+<section class="flex-1 overflow-y-auto relative flex flex-col justify-between" id="state-viewport">
+<!-- ========================================== -->
+<!-- STATE 1: ACTIVE CALL (PRIMARY SHOWCASE) -->
+<!-- ========================================== -->
+<article class="flex-1 flex flex-col justify-between p-3.5 space-y-2.5" id="state-active-call">
+<!-- Header / Call Status Meta -->
+<header class="flex items-center justify-between px-1 shrink-0">
+<button aria-label="Back to conversations" class="inline-flex items-center text-[#007AFF] text-sm font-semibold active:opacity-60 transition">
+<svg class="w-5 h-5 mr-0.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+<path d="M15 19l-7-7 7-7" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+            Chats
+          </button>
+<div class="flex flex-col items-center">
+<div class="flex items-center space-x-1.5">
+<span class="w-2 h-2 rounded-full bg-[#34C759]"></span>
+<h1 class="text-sm font-bold text-[#1D1D1F]">Priya Sharma</h1>
+</div>
+<div class="flex items-center space-x-1 text-[11px] font-medium text-[#6E6E73]">
+<span class="text-[#34C759] font-semibold">HD • ISL Mode</span>
+<span>•</span>
+<span class="tabular-nums" id="call-timer">04:18</span>
+</div>
+</div>
+<!-- Flip camera / top action -->
+<button aria-label="Switch Camera" class="w-8 h-8 rounded-full bg-white border border-[#E5E5EA] flex items-center justify-center text-[#1D1D1F] shadow-sm active:bg-gray-100" title="Switch Camera">
+<svg class="w-4 h-4 text-[#1D1D1F]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+<path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+</header>
+<!-- Remote Video Feed & Picture-in-Picture (PiP) Area -->
+<div class="relative w-full aspect-[4/3.8] rounded-2xl overflow-hidden bg-slate-900 border border-[#E5E5EA] shadow-ios-card shrink-0">
+<!-- Remote Signer Video (Framed broadly to keep hands, chest, and face in full view for ISL signs) -->
+<div class="absolute inset-0 bg-slate-800 flex items-center justify-center overflow-hidden">
+<!-- Accessible high-definition video representation of Indian Sign Language partner -->
+<svg class="w-full h-full object-cover" fill="none" viewBox="0 0 400 380" xmlns="http://www.w3.org/2000/svg">
+<!-- Neutral Accessible Video Background -->
+<rect fill="#E2E8F0" height="380" width="400"></rect>
+<!-- Warm room ambient lighting subtle gradient -->
+<circle cx="200" cy="120" fill="#FEF3C7" fill-opacity="0.3" r="160"></circle>
+<!-- Torso / Upper Body (Signer Priya Sharma) -->
+<path d="M110 380C110 300 140 240 200 240C260 240 290 300 290 380" fill="#3B82F6" stroke="#2563EB" stroke-width="2"></path>
+<!-- Collar line -->
+<path d="M178 240C182 254 218 254 222 240" fill="#DBEAFE" stroke="#1D4ED8" stroke-width="2"></path>
+<!-- Neck -->
+<rect fill="#FBCFE8" height="48" rx="6" width="28" x="186" y="196"></rect>
+<!-- Head / Face with warm, attentive expression -->
+<ellipse cx="200" cy="150" fill="#FDE047" rx="46" ry="54"></ellipse>
+<ellipse cx="200" cy="150" fill="#FBCFE8" rx="44" ry="52"></ellipse>
+<!-- Hair -->
+<path d="M150 150C148 100 170 82 200 82C230 82 252 100 250 150C254 135 244 100 200 100C156 100 146 135 150 150Z" fill="#1E293B"></path>
+<path d="M152 135C150 180 146 220 154 240C158 242 165 240 162 210C160 170 162 135 162 135" fill="#1E293B"></path>
+<path d="M248 135C250 180 254 220 246 240C242 242 235 240 238 210C240 170 238 135 238 135" fill="#1E293B"></path>
+<!-- Eyes & Smile -->
+<circle cx="185" cy="144" fill="#1E293B" r="3.5"></circle>
+<circle cx="215" cy="144" fill="#1E293B" r="3.5"></circle>
+<path d="M190 168C195 174 205 174 210 168" stroke="#1E293B" stroke-linecap="round" stroke-width="2.5"></path>
+<!-- Right Hand (Performing ISL Gesture "Help / Arrive") -->
+<g transform="translate(118, 175)">
+<circle cx="20" cy="20" fill="#FBCFE8" r="18" stroke="#F472B6" stroke-width="1.5"></circle>
+<!-- Open hand fingers extended for signing -->
+<rect fill="#FBCFE8" height="14" rx="2.5" stroke="#F472B6" stroke-width="1" width="5" x="14" y="2"></rect>
+<rect fill="#FBCFE8" height="16" rx="2.5" stroke="#F472B6" stroke-width="1" width="5" x="21" y="0"></rect>
+<rect fill="#FBCFE8" height="13" rx="2.5" stroke="#F472B6" stroke-width="1" width="5" x="28" y="4"></rect>
+</g>
+<!-- Left Hand (Active Gesture in chest area) -->
+<g transform="translate(242, 190)">
+<ellipse cx="20" cy="20" fill="#FBCFE8" rx="17" ry="15" stroke="#F472B6" stroke-width="1.5"></ellipse>
+<rect fill="#FBCFE8" height="5" rx="2.5" stroke="#F472B6" stroke-width="1" width="16" x="8" y="5"></rect>
+<rect fill="#FBCFE8" height="5" rx="2.5" stroke="#F472B6" stroke-width="1" width="18" x="8" y="12"></rect>
+</g>
+<!-- Gesture Recognition bounding / tracking indicator (Accessibility feature) -->
+<rect fill="#007AFF" fill-opacity="0.04" height="135" rx="14" stroke="#007AFF" stroke-dasharray="4 4" stroke-width="1.5" width="200" x="100" y="150"></rect>
+<rect fill="#007AFF" height="18" rx="5" width="70" x="102" y="152"></rect>
+<text fill="#FFFFFF" font-family="Inter" font-size="9" font-weight="600" x="108" y="164">ISL Motion Track</text>
+</svg>
+<!-- Signer Name Tag Overlay -->
+<div class="absolute bottom-2.5 left-2.5 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-full flex items-center space-x-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-[#34C759]"></span>
+<span class="text-white text-[11px] font-medium tracking-tight">Priya Sharma (ISL)</span>
+</div>
+<!-- Sign Clarity Optimization Badge -->
+<div class="absolute top-2.5 left-2.5 bg-white/90 backdrop-blur-md border border-white/40 px-2 py-0.5 rounded-full flex items-center space-x-1 shadow-sm">
+<svg class="w-3 h-3 text-[#007AFF]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+<path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round"></path>
+<path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+<span class="text-[10px] font-semibold text-[#1D1D1F]">Wide Sign View</span>
+</div>
+</div>
+<!-- Self Camera PiP (Upper Right Corner) -->
+<aside aria-label="Self preview window" class="absolute top-2.5 right-2.5 w-24 h-32 bg-slate-900 rounded-xl overflow-hidden border-2 border-white shadow-pip">
+<div class="relative w-full h-full bg-slate-800 flex items-center justify-center">
+<!-- Mock User Avatar/Camera in PiP -->
+<div class="w-full h-full bg-gradient-to-b from-slate-700 to-slate-900 flex flex-col items-center justify-end pb-2">
+<div class="w-10 h-10 rounded-full bg-[#007AFF] text-white flex items-center justify-center font-bold text-xs mb-1.5 shadow">
+                  AK
+                </div>
+<div class="flex items-center space-x-1 bg-black/50 px-1.5 py-0.5 rounded-full">
+<span class="w-1.5 h-1.5 rounded-full bg-[#34C759]"></span>
+<span class="text-[8px] text-white font-medium">You (Camera On)</span>
+</div>
+</div>
+</div>
+</aside>
+</div>
+<!-- Real-Time Accessible Sign Captions Container -->
+<section aria-labelledby="live-captions-heading" class="bg-white rounded-2xl p-3 border border-[#E5E5EA] shadow-ios-card shrink-0">
+<div class="flex items-center justify-between pb-1.5 border-b border-[#F2F2F7]">
+<div class="flex items-center space-x-1.5">
+<span class="flex h-2 w-2 relative">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#007AFF] opacity-75"></span>
+<span class="relative inline-flex rounded-full h-2 w-2 bg-[#007AFF]"></span>
+</span>
+<h2 class="text-[12px] font-bold text-[#1D1D1F] tracking-tight" id="live-captions-heading">Live Sign Captions</h2>
+<span class="text-[9px] uppercase px-1.5 py-0.2 bg-[#EBF5FF] text-[#007AFF] font-bold rounded">Preview</span>
+</div>
+<!-- Toggle Captions Switch -->
+<label class="relative inline-flex items-center cursor-pointer" title="Toggle Captions">
+<input aria-label="Toggle Live Captions" checked="" class="sr-only peer" type="checkbox">
+<div class="w-8 h-4.5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-[#007AFF]"></div>
+</label>
+</div>
+<!-- Caption Text Output -->
+<div class="mt-2 text-left">
+<p class="text-[13.5px] font-semibold text-[#1D1D1F] leading-snug">
+              “I am arriving at the venue now. Can you see my signs clearly?”
+            </p>
+<div class="flex items-center justify-between mt-1 text-[10.5px] text-[#6E6E73]">
+<span class="flex items-center">
+<svg class="w-3 h-3 text-[#34C759] mr-1" fill="currentColor" viewBox="0 0 20 20">
+<path clip-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" fill-rule="evenodd"></path>
+</svg>
+                ISL Confidence: 94%
+              </span>
+<span class="italic text-[10px] text-gray-400">Simulated layout preview</span>
+</div>
+</div>
+</section>
+<!-- Fallback / Accessibility Guidance Callout -->
+<div class="bg-[#EBF5FF] rounded-xl px-3 py-2 flex items-center justify-between border border-[#D0E2FF]/60 shrink-0">
+<div class="flex items-center space-x-2">
+<span class="text-xs">🤟</span>
+<span class="text-[11px] font-medium text-[#007AFF]">Dual-camera layout optimized for sign clarity</span>
+</div>
+<span class="text-[10px] text-[#007AFF] font-semibold bg-white/70 px-1.5 py-0.5 rounded">60 FPS</span>
+</div>
+<!-- In-Call Primary Control Bar (Large 56px touch targets for accessibility) -->
+<nav aria-label="In-Call Controls" class="bg-white rounded-3xl p-2.5 border border-[#E5E5EA] shadow-ios-elevated flex items-center justify-around shrink-0">
+<!-- Mute Audio Button -->
+<button aria-label="Mute microphone" class="flex flex-col items-center group active:scale-95 transition">
+<div class="w-12 h-12 rounded-full bg-[#F5F5F7] group-hover:bg-[#E5E5EA] flex items-center justify-center text-[#1D1D1F] border border-[#E5E5EA] transition">
+<svg class="w-5 h-5 text-[#1D1D1F]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+<path d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</div>
+<span class="text-[10px] font-medium text-[#6E6E73] mt-1">Mic</span>
+</button>
+<!-- Toggle Video Camera -->
+<button aria-label="Toggle camera" class="flex flex-col items-center group active:scale-95 transition">
+<div class="w-12 h-12 rounded-full bg-[#F5F5F7] group-hover:bg-[#E5E5EA] flex items-center justify-center text-[#1D1D1F] border border-[#E5E5EA] transition">
+<svg class="w-5 h-5 text-[#1D1D1F]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+<path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</div>
+<span class="text-[10px] font-medium text-[#6E6E73] mt-1">Camera</span>
+</button>
+<!-- Live Captions (Active highlighted) -->
+<button aria-label="Toggle live captions" class="flex flex-col items-center group active:scale-95 transition">
+<div class="w-12 h-12 rounded-full bg-[#007AFF] text-white flex items-center justify-center shadow-sm">
+<span class="font-bold text-xs tracking-wider">CC</span>
+</div>
+<span class="text-[10px] font-semibold text-[#007AFF] mt-1">Captions</span>
+</button>
+<!-- Switch Flip Camera -->
+<button aria-label="Flip front/back camera" class="flex flex-col items-center group active:scale-95 transition">
+<div class="w-12 h-12 rounded-full bg-[#F5F5F7] group-hover:bg-[#E5E5EA] flex items-center justify-center text-[#1D1D1F] border border-[#E5E5EA] transition">
+<svg class="w-5 h-5 text-[#1D1D1F]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+<path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</div>
+<span class="text-[10px] font-medium text-[#6E6E73] mt-1">Flip</span>
+</button>
+<!-- End Call Button (Accessible Red #FF3B30) -->
+<button aria-label="End Video Call" class="flex flex-col items-center group active:scale-95 transition" onclick="switchState('ended')">
+<div class="w-12 h-12 rounded-full bg-[#FF3B30] hover:bg-[#D70015] flex items-center justify-center text-white shadow-md transition">
+<svg class="w-6 h-6 rotate-[135deg]" fill="currentColor" viewBox="0 0 20 20">
+<path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z"></path>
+</svg>
+</div>
+<span class="text-[10px] font-medium text-[#FF3B30] mt-1">End</span>
+</button>
+</nav>
+</article>
+<!-- ========================================== -->
+<!-- STATE 2: INCOMING CALL MODAL / STATE -->
+<!-- ========================================== -->
+<article class="hidden flex-1 flex flex-col justify-between p-6 text-center animate-fade-in" id="state-incoming-call">
+<header class="pt-6">
+<span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-[#EBF5FF] text-[#007AFF] text-xs font-semibold">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+<path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+<span>SignTalk Accessible Video Call</span>
+</span>
+<h2 class="text-2xl font-bold text-[#1D1D1F] mt-3 tracking-tight">Priya Sharma</h2>
+<p class="text-sm font-medium text-[#6E6E73] mt-1">Requesting ISL Video Session...</p>
+</header>
+<!-- Caller Avatar with visual accessibility badge -->
+<div class="my-auto flex flex-col items-center">
+<div class="relative">
+<div class="w-28 h-28 rounded-full bg-[#007AFF]/10 border-4 border-white shadow-ios-elevated flex items-center justify-center overflow-hidden">
+<span class="text-3xl font-bold text-[#007AFF]">PS</span>
+</div>
+<span class="absolute bottom-1 right-1 w-7 h-7 bg-[#34C759] border-2 border-white rounded-full flex items-center justify-center text-white text-xs font-bold" title="ISL Verified Signer">
+              🤟
+            </span>
+</div>
+<div class="mt-4 bg-white/80 border border-[#E5E5EA] px-4 py-2 rounded-xl inline-flex items-center space-x-2 text-xs text-[#1D1D1F]">
+<span class="w-2 h-2 rounded-full bg-[#34C759]"></span>
+<span>Live Sign-to-Text &amp; Text-to-Sign enabled</span>
+</div>
+</div>
+<!-- Incoming Call Actions: Decline / Accept -->
+<footer class="pb-6">
+<div class="flex items-center justify-around max-w-[280px] mx-auto">
+<!-- Decline -->
+<button aria-label="Decline Call" class="flex flex-col items-center group active:scale-95 transition" onclick="switchState('ended')">
+<div class="w-16 h-16 rounded-full bg-[#FF3B30] text-white flex items-center justify-center shadow-lg hover:bg-[#D70015]">
+<svg class="w-7 h-7 rotate-[135deg]" fill="currentColor" viewBox="0 0 20 20">
+<path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z"></path>
+</svg>
+</div>
+<span class="text-xs font-semibold text-[#1D1D1F] mt-2">Decline</span>
+</button>
+<!-- Accept Video Call -->
+<button aria-label="Accept Video Call" class="flex flex-col items-center group active:scale-95 transition" onclick="switchState('active')">
+<div class="w-16 h-16 rounded-full bg-[#34C759] text-white flex items-center justify-center shadow-lg hover:bg-emerald-600">
+<svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+<path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</div>
+<span class="text-xs font-semibold text-[#1D1D1F] mt-2">Accept</span>
+</button>
+</div>
+</footer>
+</article>
+<!-- ========================================== -->
+<!-- STATE 3: OUTGOING CALL STATE -->
+<!-- ========================================== -->
+<article class="hidden flex-1 flex flex-col justify-between p-6 text-center" id="state-outgoing-call">
+<header class="pt-6">
+<span class="text-xs font-semibold uppercase tracking-wider text-[#6E6E73]">SignTalk Video</span>
+<h2 class="text-2xl font-bold text-[#1D1D1F] mt-2">Rahul Verma</h2>
+<p class="text-sm font-medium text-[#007AFF] mt-1 flex items-center justify-center space-x-1.5">
+<span class="w-2 h-2 rounded-full bg-[#007AFF] animate-ping"></span>
+<span>Calling &amp; preparing sign track...</span>
+</p>
+</header>
+<!-- Pulsing Profile Target -->
+<div class="relative my-auto flex items-center justify-center">
+<div class="absolute w-44 h-44 rounded-full bg-[#007AFF] call-pulse-ring pointer-events-none"></div>
+<div class="absolute w-36 h-36 rounded-full bg-[#007AFF] call-pulse-ring-delayed pointer-events-none"></div>
+<div class="w-28 h-28 rounded-full bg-white border-2 border-[#E5E5EA] shadow-ios-elevated flex items-center justify-center relative z-10">
+<span class="text-3xl font-bold text-[#007AFF]">RV</span>
+</div>
+</div>
+<footer class="pb-6">
+<p class="text-xs text-[#6E6E73] mb-6">Camera will open automatically in sign detection mode.</p>
+<button aria-label="Cancel Video Call" class="w-full max-w-[200px] mx-auto py-3 px-6 rounded-full bg-[#FF3B30] text-white text-sm font-semibold shadow-md active:scale-95 transition" onclick="switchState('ended')">
+            Cancel Call
+          </button>
+</footer>
+</article>
+<!-- ========================================== -->
+<!-- STATE 4: CALL ENDED SUMMARY STATE -->
+<!-- ========================================== -->
+<article class="hidden flex-1 flex flex-col justify-between p-6" id="state-call-ended">
+<header class="pt-6 text-center">
+<div class="w-14 h-14 bg-gray-100 rounded-full mx-auto flex items-center justify-center text-[#6E6E73] mb-3">
+<svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+<path d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M5 3a2 2 0 00-2 2v1c0 8.284 6.716 15 15 15h1a2 2 0 002-2v-3.28a1 1 0 00-.684-.948l-4.493-1.498a1 1 0 00-1.21.502l-1.13 2.257a11.042 11.042 0 01-5.516-5.517l2.257-1.128a1 1 0 00.502-1.21L9.228 3.683A1 1 0 008.279 3H5z" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</div>
+<h2 class="text-xl font-bold text-[#1D1D1F]">Call Ended</h2>
+<p class="text-xs text-[#6E6E73] mt-1">Video session with Priya Sharma closed</p>
+</header>
+<!-- Summary Details Card -->
+<div class="bg-white rounded-2xl p-4 border border-[#E5E5EA] shadow-ios-card space-y-3.5 my-auto">
+<div class="flex justify-between items-center pb-2.5 border-b border-[#F2F2F7] text-sm">
+<span class="text-[#6E6E73]">Duration</span>
+<span class="font-semibold text-[#1D1D1F]">04 minutes 18 seconds</span>
+</div>
+<div class="flex justify-between items-center pb-2.5 border-b border-[#F2F2F7] text-sm">
+<span class="text-[#6E6E73]">Call Type</span>
+<span class="font-semibold text-[#007AFF] bg-[#EBF5FF] px-2 py-0.5 rounded text-xs">ISL Sign Video</span>
+</div>
+<div class="flex justify-between items-center pb-2.5 border-b border-[#F2F2F7] text-sm">
+<span class="text-[#6E6E73]">Sign Captions Translated</span>
+<span class="font-semibold text-[#1D1D1F]">24 Sentences</span>
+</div>
+<div class="flex justify-between items-center text-sm">
+<span class="text-[#6E6E73]">Network Quality</span>
+<span class="inline-flex items-center text-[#34C759] font-medium text-xs">
+<span class="w-1.5 h-1.5 rounded-full bg-[#34C759] mr-1.5"></span>
+              Excellent (HD)
+            </span>
+</div>
+</div>
+<!-- Ended State Actions -->
+<footer class="space-y-2.5 pb-2">
+<button class="w-full py-3.5 rounded-xl bg-[#007AFF] hover:bg-[#0062CC] text-white text-sm font-semibold shadow-sm transition active:scale-[0.99]" onclick="switchState('active')">
+            Call Again
+          </button>
+<button class="w-full py-3 rounded-xl bg-white border border-[#E5E5EA] text-[#1D1D1F] text-sm font-semibold hover:bg-gray-50 transition active:scale-[0.99]" onclick="switchState('active')">
+            Return to Conversations
+          </button>
+</footer>
+</article>
+</section>
+<!-- END: ScreenStateContainer -->
+<!-- BEGIN: BottomNavigationBar -->
+<!-- Matches SignTalk design standard 4-tab system, Conversations active -->
+<footer class="h-20 bg-white border-t border-[#E5E5EA] px-6 flex justify-between items-center shrink-0 z-50">
+<!-- Home Tab -->
+<a aria-label="Home" class="flex flex-col items-center justify-center text-[#6E6E73] hover:text-[#007AFF] transition active:scale-95" href="#">
+<svg class="w-6 h-6 stroke-current" fill="none" stroke-width="2" viewBox="0 0 24 24">
+<path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+<span class="text-[10px] font-medium mt-1">Home</span>
+</a>
+<!-- Translate Tab -->
+<a aria-label="Translate" class="flex flex-col items-center justify-center text-[#6E6E73] hover:text-[#007AFF] transition active:scale-95" href="#">
+<svg class="w-6 h-6 stroke-current" fill="none" stroke-width="2" viewBox="0 0 24 24">
+<path d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+<span class="text-[10px] font-medium mt-1">Translate</span>
+</a>
+<!-- Conversations Tab (Active Highlighted) -->
+<a aria-current="page" aria-label="Conversations - Active Tab" class="flex flex-col items-center justify-center text-[#007AFF] transition active:scale-95" href="#">
+<div class="relative">
+<svg class="w-6 h-6 fill-current" viewBox="0 0 24 24">
+<path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"></path>
+</svg>
+<span class="absolute -top-1 -right-1 w-2.5 h-2.5 bg-[#34C759] border-2 border-white rounded-full"></span>
+</div>
+<span class="text-[10px] font-bold mt-1">Conversations</span>
+</a>
+<!-- Settings Tab -->
+<a aria-label="Settings" class="flex flex-col items-center justify-center text-[#6E6E73] hover:text-[#007AFF] transition active:scale-95" href="#">
+<svg class="w-6 h-6 stroke-current" fill="none" stroke-width="2" viewBox="0 0 24 24">
+<path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke-linecap="round" stroke-linejoin="round"></path>
+<path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+<span class="text-[10px] font-medium mt-1">Settings</span>
+</a>
+</footer>
+<!-- END: BottomNavigationBar -->
+<!-- BEGIN: iOSHomeIndicator -->
+<div class="w-full flex justify-center pb-2 bg-white" data-purpose="ios-home-indicator">
+<div class="w-32 h-1 bg-[#1D1D1F]/30 rounded-full"></div>
+</div>
+<!-- END: iOSHomeIndicator -->
+</main>
+<!-- END: PhoneShellWrapper -->
+<!-- BEGIN: InteractivePrototypeLogic -->
+<script data-purpose="state-manager">
+    /**
+     * Switch prototype views between the 4 requested call states:
+     * - active (Active Call)
+     * - incoming (Incoming Call)
+     * - outgoing (Outgoing Call)
+     * - ended (Call Ended)
+     */
+    function switchState(stateName) {
+      // Hide all states
+      const states = ['active', 'incoming', 'outgoing', 'ended'];
+      states.forEach(s => {
+        const el = document.getElementById(`state-${s === 'active' ? 'active-call' : s === 'incoming' ? 'incoming-call' : s === 'outgoing' ? 'outgoing-call' : 'call-ended'}`);
+        const tab = document.getElementById(`tab-${s}`);
+        
+        if (el) el.classList.add('hidden');
+        if (tab) {
+          tab.classList.remove('bg-white', 'text-[#1D1D1F]', 'font-semibold', 'shadow-sm');
+          tab.classList.add('text-[#6E6E73]');
+        }
+      });
+
+      // Show target state
+      const targetStateEl = document.getElementById(`state-${stateName === 'active' ? 'active-call' : stateName === 'incoming' ? 'incoming-call' : stateName === 'outgoing' ? 'outgoing-call' : 'call-ended'}`);
+      const targetTab = document.getElementById(`tab-${stateName}`);
+
+      if (targetStateEl) targetStateEl.classList.remove('hidden');
+      if (targetTab) {
+        targetTab.classList.add('bg-white', 'text-[#1D1D1F]', 'font-semibold', 'shadow-sm');
+        targetTab.classList.remove('text-[#6E6E73]');
+      }
+    }
+  </script>
+<!-- END: InteractivePrototypeLogic -->
+</body></html>

@@ -1,0 +1,219 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
+<title>SignTalk - Speech to Text</title>
+<!-- Load Tailwind CSS v3 -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Configuration -->
+<script data-purpose="tailwind-config">
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#007AFF',
+            canvas: '#F5F5F7',
+            borderLight: '#E5E5EA',
+            textPrimary: '#1D1D1F',
+            textSecondary: '#6E6E73',
+            success: '#34C759',
+          },
+          fontFamily: {
+            sans: ['-apple-system', 'BlinkMacSystemFont', 'Inter', 'Segoe UI', 'Roboto', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+<!-- Custom Styling -->
+<style data-purpose="custom-layout">
+    body {
+      background-color: #E2E8F0;
+      font-family: -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .ripple-ring-3 {
+      background: rgba(0, 122, 255, 0.04);
+    }
+    .ripple-ring-2 {
+      background: rgba(0, 122, 255, 0.08);
+    }
+    .ripple-ring-1 {
+      background: rgba(0, 122, 255, 0.15);
+    }
+  </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-0 sm:p-4">
+<!-- BEGIN: MobileFrame -->
+<div class="w-full max-w-[393px] h-[852px] max-h-[852px] bg-canvas text-textPrimary flex flex-col justify-between overflow-hidden shadow-2xl rounded-[48px] border-[8px] border-slate-900 relative">
+<!-- Top Content Container -->
+<div class="flex flex-col flex-1 overflow-y-auto no-scrollbar">
+<!-- BEGIN: StatusBar -->
+<div class="pt-3 px-7 pb-2 flex justify-between items-center text-xs font-semibold select-none" data-purpose="ios-status-bar">
+<span>9:41</span>
+<div class="flex items-center space-x-1.5 text-textPrimary">
+<!-- Cellular Signal -->
+<svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 16 16">
+<rect height="4" rx="0.5" width="2" x="1" y="11"></rect>
+<rect height="7" rx="0.5" width="2" x="5" y="8"></rect>
+<rect height="10" rx="0.5" width="2" x="9" y="5"></rect>
+<rect height="14" rx="0.5" width="2" x="13" y="1"></rect>
+</svg>
+<!-- Wi-Fi -->
+<svg class="w-3.5 h-3.5 stroke-current fill-none stroke-2" viewBox="0 0 24 24">
+<path d="M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22h-.01" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+<!-- Battery -->
+<div class="w-5 h-2.5 border border-current rounded-[3px] p-0.5 flex items-center relative">
+<div class="h-full bg-current w-3/4 rounded-[1px]"></div>
+<div class="absolute -right-1 top-0.5 bottom-0.5 w-0.5 bg-current rounded-r-xs"></div>
+</div>
+</div>
+</div>
+<!-- END: StatusBar -->
+<!-- BEGIN: NavigationHeader -->
+<header class="px-5 py-2.5 flex items-center justify-between" data-purpose="screen-header">
+<!-- Back Navigation Button -->
+<button aria-label="Go Back" class="w-9 h-9 flex items-center justify-start text-textPrimary hover:opacity-70 transition-opacity">
+<svg class="w-5 h-5 stroke-current stroke-2 fill-none" viewBox="0 0 24 24">
+<path d="M15.75 19.5L8.25 12l7.5-7.5" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+<!-- Screen Title -->
+<h1 class="text-lg font-bold tracking-tight text-center">Speech to Text</h1>
+<!-- Settings Icon Button -->
+<button aria-label="Settings" class="w-9 h-9 flex items-center justify-end text-textPrimary hover:opacity-70 transition-opacity">
+<svg class="w-5 h-5 stroke-current stroke-2 fill-none" viewBox="0 0 24 24">
+<path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.6 6.6 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z" stroke-linecap="round" stroke-linejoin="round"></path>
+<path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+</header>
+<!-- END: NavigationHeader -->
+<!-- BEGIN: MainContent -->
+<main class="flex-1 px-4 pt-1 pb-4 flex flex-col space-y-3">
+<!-- BEGIN: MicrophoneCard -->
+<section class="bg-white rounded-2xl p-4 shadow-sm border border-borderLight flex flex-col items-center justify-between" data-purpose="listening-interface">
+<!-- Status Indicator -->
+<div class="text-xs font-semibold text-emerald-600 tracking-wide pt-0.5">
+            Ready to listen
+          </div>
+<!-- Pulsing Rings and Microphone Action Button -->
+<div class="my-3 flex items-center justify-center relative w-40 h-40">
+<!-- Outermost Ripple -->
+<div class="absolute w-40 h-40 rounded-full ripple-ring-3 flex items-center justify-center pointer-events-none"></div>
+<!-- Middle Ripple -->
+<div class="absolute w-32 h-32 rounded-full ripple-ring-2 flex items-center justify-center pointer-events-none"></div>
+<!-- Inner Ripple -->
+<div class="absolute w-24 h-24 rounded-full ripple-ring-1 flex items-center justify-center pointer-events-none"></div>
+<!-- Main Microphone Button -->
+<button aria-label="Microphone" class="w-16 h-16 rounded-full bg-primary flex items-center justify-center text-white shadow-md active:scale-95 transition-transform relative z-10">
+<svg class="w-7 h-7 stroke-current stroke-2 fill-none" viewBox="0 0 24 24">
+<path d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15a3 3 0 003-3V6a3 3 0 00-6 0v6a3 3 0 003 3z" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+</div>
+<!-- Instruction Text -->
+<p class="text-xs text-textSecondary font-medium text-center mb-3">
+            Tap the microphone and start speaking
+          </p>
+<!-- Language Selector Pill -->
+<button class="flex items-center space-x-1.5 px-3 py-1 rounded-full border border-borderLight text-xs text-textPrimary hover:bg-slate-50 transition-colors" data-purpose="language-selector">
+<span class="font-medium text-xs">English (US)</span>
+<svg class="w-3.5 h-3.5 text-textSecondary stroke-current stroke-2 fill-none" viewBox="0 0 24 24">
+<path d="M19.5 8.25l-7.5 7.5-7.5-7.5" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+</section>
+<!-- END: MicrophoneCard -->
+<!-- BEGIN: LiveCaptionsCard -->
+<section class="bg-white rounded-2xl p-3.5 shadow-sm border border-borderLight flex flex-col flex-1 min-h-[140px]" data-purpose="live-captions">
+<!-- Card Header -->
+<div class="flex items-center justify-between mb-2">
+<h2 class="text-xs font-bold text-textPrimary">Live Captions</h2>
+<button class="text-textSecondary hover:text-textPrimary transition-colors p-1" title="Copy captions">
+<svg class="w-4 h-4 stroke-current stroke-2 fill-none" viewBox="0 0 24 24">
+<rect height="13" rx="2" stroke-linecap="round" stroke-linejoin="round" width="13" x="9" y="9"></rect>
+<path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</button>
+</div>
+<!-- Transcript Placeholder Content -->
+<div class="flex-1 bg-transparent text-xs text-textSecondary leading-relaxed pt-1">
+            Your spoken words will appear here as captions...
+          </div>
+</section>
+<!-- END: LiveCaptionsCard -->
+<!-- BEGIN: ActionControls -->
+<div class="flex flex-col space-y-2 pt-1" data-purpose="action-buttons">
+<!-- Pause and Clear Button Row -->
+<div class="grid grid-cols-2 gap-2.5">
+<!-- Pause Button (Primary Pill) -->
+<button class="bg-primary hover:bg-blue-600 active:bg-blue-700 text-white font-medium text-xs py-2.5 px-4 rounded-full flex items-center justify-center space-x-2 transition-colors shadow-sm">
+<svg class="w-4 h-4 stroke-current stroke-2 fill-none" viewBox="0 0 24 24">
+<circle cx="12" cy="12" r="10" stroke-linecap="round" stroke-linejoin="round"></circle>
+<line stroke-linecap="round" stroke-linejoin="round" x1="10" x2="10" y1="9" y2="15"></line>
+<line stroke-linecap="round" stroke-linejoin="round" x1="14" x2="14" y1="9" y2="15"></line>
+</svg>
+<span>Pause</span>
+</button>
+<!-- Clear Button (Secondary Pill) -->
+<button class="bg-white hover:bg-slate-50 active:bg-slate-100 text-textPrimary font-medium text-xs py-2.5 px-4 rounded-full border border-borderLight flex items-center justify-center space-x-2 transition-colors shadow-sm">
+<svg class="w-4 h-4 text-textSecondary stroke-current stroke-2 fill-none" viewBox="0 0 24 24">
+<path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+<span>Clear</span>
+</button>
+</div>
+<!-- Copy Text Full Width Button -->
+<button class="w-full bg-white hover:bg-slate-50 active:bg-slate-100 text-textPrimary font-medium text-xs py-2.5 px-4 rounded-full border border-borderLight flex items-center justify-center space-x-2 transition-colors shadow-sm">
+<svg class="w-4 h-4 text-textSecondary stroke-current stroke-2 fill-none" viewBox="0 0 24 24">
+<rect height="13" rx="2" stroke-linecap="round" stroke-linejoin="round" width="13" x="9" y="9"></rect>
+<path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+<span>Copy Text</span>
+</button>
+</div>
+<!-- END: ActionControls -->
+</main>
+<!-- END: MainContent -->
+</div>
+<!-- BEGIN: BottomNavigationBar -->
+<nav class="bg-white border-t border-borderLight px-6 pt-2 pb-5 flex items-center justify-between" data-purpose="tab-bar">
+<!-- Home Tab -->
+<a class="flex flex-col items-center space-y-1 text-textSecondary hover:text-textPrimary transition-colors" data-purpose="nav-item" href="#">
+<svg class="w-5 h-5 stroke-current stroke-2 fill-none" viewBox="0 0 24 24">
+<path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+<span class="text-[10px] font-medium leading-tight">Home</span>
+</a>
+<!-- Translate Tab (Active Tab) -->
+<a class="flex flex-col items-center space-y-1 text-primary" data-purpose="nav-item-active" href="#">
+<div class="relative flex items-center justify-center">
+<svg class="w-5 h-5 stroke-current stroke-2 fill-none" viewBox="0 0 24 24">
+<path d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</div>
+<span class="text-[10px] font-semibold leading-tight">Translate</span>
+</a>
+<!-- Conversations Tab -->
+<a class="flex flex-col items-center space-y-1 text-textSecondary hover:text-textPrimary transition-colors" data-purpose="nav-item" href="#">
+<svg class="w-5 h-5 stroke-current stroke-2 fill-none" viewBox="0 0 24 24">
+<path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+<span class="text-[10px] font-medium leading-tight">Conversations</span>
+</a>
+<!-- Settings Tab -->
+<a class="flex flex-col items-center space-y-1 text-textSecondary hover:text-textPrimary transition-colors" data-purpose="nav-item" href="#">
+<svg class="w-5 h-5 stroke-current stroke-2 fill-none" viewBox="0 0 24 24">
+<path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke-linecap="round" stroke-linejoin="round"></path>
+<path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+<span class="text-[10px] font-medium leading-tight">Settings</span>
+</a>
+</nav>
+<!-- END: BottomNavigationBar -->
+<!-- Home Indicator (iOS Bar) -->
+<div class="absolute bottom-1 left-1/2 -translate-x-1/2 w-32 h-1 bg-neutral-300 rounded-full pointer-events-none"></div>
+</div>
+<!-- END: MobileFrame -->
+</body></html>
