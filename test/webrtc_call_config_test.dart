@@ -18,4 +18,24 @@ void main() {
   test('signalingUrlOverride is empty in unit tests by default', () {
     expect(WebRtcCallConfig.signalingUrlOverride, isEmpty);
   });
+
+  test('quick tunnel host does not default to wss on same host port 8765', () {
+    final url = WebRtcCallConfig.signalingUrlForContext(
+      scheme: 'https',
+      host: 'concrete-folks-sql-combine.trycloudflare.com',
+    );
+    expect(url, isEmpty);
+    expect(
+      WebRtcCallConfig.hostUsesAppOnlyQuickTunnel('concrete-folks-sql-combine.trycloudflare.com'),
+      isTrue,
+    );
+  });
+
+  test('LAN http host still uses ws on same host', () {
+    final url = WebRtcCallConfig.signalingUrlForContext(
+      scheme: 'http',
+      host: '192.168.1.10',
+    );
+    expect(url, 'ws://192.168.1.10:8765');
+  });
 }

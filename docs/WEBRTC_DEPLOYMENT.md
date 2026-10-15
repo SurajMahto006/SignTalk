@@ -8,6 +8,32 @@
 4. If the phone never gets camera/mic: use the **HTTPS + WSS** procedure in [`WEBRTC_SECURE_DEMO.md`](WEBRTC_SECURE_DEMO.md) (two tunnels or a proxy — **8080 alone is not enough**).
 5. Confirm status chips: **Signaling joined** + **Media connected** and remote/local track counts before presenting as “working.”
 
+## Cloudflare quick tunnel (502 / phone testing)
+
+**Evidence on this project:** Flutter’s `web-server` dev tool answers **GET /** with **200** but **HEAD /** with **404** (Dart `shelf`). Some tunnel edge checks use **HEAD**; that can show as **502 Bad Gateway** even when `http://127.0.0.1:8080` works in the browser. **Fix:** start Flutter first, wait until the terminal shows the app is being served, then start `cloudflared`. If you see 502, refresh once (GET). Keep the Flutter terminal open — stopping it causes 502 until you restart the tunnel or Flutter.
+
+**Three processes (all must stay open):**
+
+| Terminal | Command | Purpose |
+|----------|---------|---------|
+| 1 | `npm start` in `tools/signaling-server` | WebSocket signaling on **8765** |
+| 2 | `flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080` | App on **8080** |
+| 3 | `cloudflared tunnel --url http://127.0.0.1:8080` | Public **HTTPS** app URL |
+| 4 (extra) | `cloudflared tunnel --url http://127.0.0.1:8765` | Public **WSS** for signaling (second URL) |
+
+Tunneling **only 8080** does **not** expose signaling. On the phone, open the **app** `https://….trycloudflare.com` URL, then in Video call paste **`wss://….trycloudflare.com`** from the **signaling** tunnel (no `:8765` on the public URL). Optional on PC when you run Flutter: `--dart-define=SIGNALING_URL=wss://YOUR-SIGNAL-TUNNEL-HOST` (change each run — do not commit).
+
+Verify locally before tunnels:
+
+```powershell
+curl.exe -s -o NUL -w "GET %{http_code}`n" http://127.0.0.1:8080/
+curl.exe http://127.0.0.1:8765/
+```
+
+Expect **GET 200** and signaling text `SignTalk signaling server OK`.
+
+---
+
 ## Start locally
 
 **Terminal 1 — signaling (PC):**

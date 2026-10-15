@@ -831,11 +831,23 @@ class _LobbyPanel extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
       child: Column(
         children: [
+          if (WebRtcCallConfig.needsSeparateSignalingTunnel) ...[
+            Text(
+              WebRtcCallConfig.tunnelSignalingSetupHint,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: SignTalkColors.primaryBlue,
+                    height: 1.35,
+                  ),
+            ),
+            const SizedBox(height: 8),
+          ],
           TextField(
             controller: signalUrlController,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Signaling WebSocket URL',
-              hintText: 'wss:// or ws://…',
+              hintText: WebRtcCallConfig.needsSeparateSignalingTunnel
+                  ? 'wss://your-signaling-tunnel.trycloudflare.com'
+                  : 'wss:// or ws://…',
             ),
           ),
           const SizedBox(height: 10),
