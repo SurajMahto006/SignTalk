@@ -9,6 +9,7 @@ import '../../services/speech/speech_transcript_controller.dart';
 import '../../services/speech/text_to_speech_service.dart';
 import '../../services/webrtc/call_media_state.dart';
 import '../../services/webrtc/webrtc_call_config.dart';
+import '../../services/gesture/gesture_recognizer_service.dart';
 import '../../services/webrtc/webrtc_call_service.dart';
 import '../../theme/sign_talk_colors.dart';
 
@@ -34,17 +35,123 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   bool _connecting = false;
   SpeechRecognitionService? _speech;
   final List<StreamSubscription<dynamic>> _captionSubs = [];
+  final _gestures = createGestureRecognizerService();
+  Timer? _gesturePollTimer;
+  StreamSubscription<GestureCaptionMessage>? _remoteGestureSub;
+  bool _gesturePipelineActive = false;
+  String _gestureStatus = 'Gestures idle';
+  String? _localGestureCaption;
+  String? _remoteGestureCaption;
+  String? _lastSentGesture;
+  DateTime? _lastSentAt;
+  String? _lastSpokenRemoteLabel;
+  DateTime? _lastSpokenRemoteAt;
 
   @override
   void initState() {
     super.initState();
     _signalUrlController = TextEditingController(text: WebRtcCallConfig.signalingUrlForPage());
+    _call.addListener(_syncGesturePipelineWithCall);
+    _remoteGestureSub = _call.gestureCaptions.listen(_onRemoteGestureCaption);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await SignTalkScope.of(context).cameraPreview.stop();
       await _call.ensureRenderers();
       if (mounted) setState(() {});
+      _syncGesturePipelineWithCall();
     });
     _captions.addListener(_syncCaptionsToField);
+  }
+
+  void _syncGesturePipelineWithCall() {
+    final shouldRun = _call.isActive && _call.hasLocalVideo;
+    if (shouldRun && !_gesturePipelineActive) {
+      unawaited(_startGesturePipeline());
+    } else if (!shouldRun && _gesturePipelineActive) {
+      _stopGesturePipeline();
+    }
+  }
+
+  Future<void> _startGesturePipeline() async {
+    if (_gesturePipelineActive) return;
+    if (!_gestures.isSupported) {
+      setState(() => _gestureStatus = 'Gestures: Chrome/web only');
+      return;
+    }
+    setState(() => _gestureStatus = 'Loading gesture model…');
+    final init = await _gestures.init();
+    if (!mounted) return;
+    if (!init.ready) {
+      setState(() => _gestureStatus = 'Gesture model failed: ${init.error ?? 'unknown'}');
+      return;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+    if (!mounted || !_call.isActive) return;
+    final videoId = webrtcLocalVideoElementId(_call.localRenderer);
+    final start = _gestures.startOnVideoElementId(videoId);
+    if (!start.ok) {
+      setState(() => _gestureStatus = 'Gesture camera hook failed: ${start.error ?? videoId}');
+      return;
+    }
+    _gesturePipelineActive = true;
+    _gesturePollTimer?.cancel();
+    _gesturePollTimer = Timer.periodic(const Duration(milliseconds: 150), (_) => _pollLocalGesture());
+    setState(() => _gestureStatus = 'Gesture recognition active (MediaPipe)');
+  }
+
+  void _stopGesturePipeline() {
+    _gesturePollTimer?.cancel();
+    _gesturePollTimer = null;
+    _gestures.stop();
+    _gesturePipelineActive = false;
+    if (mounted) {
+      setState(() {
+        _gestureStatus = 'Gestures stopped';
+        _localGestureCaption = null;
+      });
+    }
+  }
+
+  void _pollLocalGesture() {
+    final det = _gestures.consumeLatest();
+    if (det == null) return;
+    if (det.status == 'error' && det.message != null) {
+      if (mounted) setState(() => _gestureStatus = 'Gesture error: ${det.message}');
+      return;
+    }
+    if (!det.isRecognized || det.gesture == null || det.label == null) return;
+    final now = DateTime.now();
+    if (_lastSentGesture == det.gesture &&
+        _lastSentAt != null &&
+        now.difference(_lastSentAt!) < const Duration(seconds: 2)) {
+      return;
+    }
+    _lastSentGesture = det.gesture;
+    _lastSentAt = now;
+    _call.sendGestureCaption(gesture: det.gesture!, label: det.label!, score: det.score);
+    if (mounted) {
+      setState(() => _localGestureCaption = 'You: ${det.label}');
+    }
+  }
+
+  Future<void> _onRemoteGestureCaption(GestureCaptionMessage msg) async {
+    if (!mounted) return;
+    setState(() => _remoteGestureCaption = 'Them: ${msg.label}');
+    final now = DateTime.now();
+    if (_lastSpokenRemoteLabel == msg.label &&
+        _lastSpokenRemoteAt != null &&
+        now.difference(_lastSpokenRemoteAt!) < const Duration(seconds: 4)) {
+      return;
+    }
+    _lastSpokenRemoteLabel = msg.label;
+    _lastSpokenRemoteAt = now;
+    final prefs = SignTalkScope.preferencesOf(context);
+    final tts = SignTalkScope.of(context).textToSpeech;
+    await tts.setLanguage(prefs.speechLocale);
+    final spoken = 'Remote gesture: ${msg.label}';
+    final outcome = await tts.speak(spoken, enabled: prefs.spokenOutputEnabled);
+    if (outcome == SpeakOutcome.failed || outcome == SpeakOutcome.unavailable) {
+      _showSnack('Could not speak remote caption.');
+    }
   }
 
   void _syncCaptionsToField() {
@@ -58,6 +165,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   @override
   void deactivate() {
+    _stopGesturePipeline();
     unawaited(_stopCaptions());
     unawaited(_call.hangUp());
     super.deactivate();
@@ -65,6 +173,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   @override
   void dispose() {
+    _stopGesturePipeline();
+    _call.removeListener(_syncGesturePipelineWithCall);
+    unawaited(_remoteGestureSub?.cancel());
     for (final s in _captionSubs) {
       unawaited(s.cancel());
     }
@@ -131,9 +242,12 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   }
 
   Future<void> _endCall() async {
+    _stopGesturePipeline();
     await _stopCaptions();
     await _call.hangUp();
-    setState(() {});
+    setState(() {
+      _remoteGestureCaption = null;
+    });
   }
 
   Future<void> _startCaptions() async {
@@ -220,10 +334,25 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-                  child: _EssentialStatusLine(
-                    call: _call,
-                    connecting: _connecting,
-                    onDark: inCall,
+                  child: Column(
+                    children: [
+                      _EssentialStatusLine(
+                        call: _call,
+                        connecting: _connecting,
+                        onDark: inCall,
+                      ),
+                      if (inCall) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          _gestureStatus,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: inCall ? Colors.white60 : SignTalkColors.secondaryText,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
                 if (!inCall)
@@ -250,6 +379,8 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                                   call: _call,
                                   mediaConnected: mediaConnected,
                                   showRemotePlaceholder: true,
+                                  localCaption: _localGestureCaption,
+                                  remoteCaption: _remoteGestureCaption,
                                 ),
                               ),
                             ),
@@ -268,6 +399,8 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                           call: _call,
                           mediaConnected: mediaConnected,
                           showRemotePlaceholder: true,
+                          localCaption: _localGestureCaption,
+                          remoteCaption: _remoteGestureCaption,
                         ),
                       ),
                     ),
@@ -402,11 +535,15 @@ class _CallVideoStack extends StatelessWidget {
     required this.call,
     required this.mediaConnected,
     required this.showRemotePlaceholder,
+    this.localCaption,
+    this.remoteCaption,
   });
 
   final WebRtcCallService call;
   final bool mediaConnected;
   final bool showRemotePlaceholder;
+  final String? localCaption;
+  final String? remoteCaption;
 
   @override
   Widget build(BuildContext context) {
@@ -433,6 +570,13 @@ class _CallVideoStack extends StatelessWidget {
                     )
                   : null),
         ),
+        if (remoteCaption != null)
+          Positioned(
+            left: 8,
+            right: 8,
+            bottom: 8,
+            child: _GestureCaptionChip(text: remoteCaption!, tone: _CaptionTone.remote),
+          ),
         Positioned(
           right: 10,
           top: 10,
@@ -449,19 +593,78 @@ class _CallVideoStack extends StatelessWidget {
               child: SizedBox(
                 width: 92,
                 height: 124,
-                child: ColoredBox(
-                  color: Colors.black54,
-                  child: call.localRenderer.srcObject != null
-                      ? RTCVideoView(call.localRenderer, mirror: true)
-                      : const Center(
-                          child: Icon(Icons.videocam_off, color: Colors.white54, size: 26),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    ColoredBox(
+                      color: Colors.black54,
+                      child: call.localRenderer.srcObject != null
+                          ? RTCVideoView(call.localRenderer, mirror: true)
+                          : const Center(
+                              child: Icon(Icons.videocam_off, color: Colors.white54, size: 26),
+                            ),
+                    ),
+                    if (localCaption != null)
+                      Positioned(
+                        left: 2,
+                        right: 2,
+                        bottom: 2,
+                        child: _GestureCaptionChip(
+                          text: localCaption!,
+                          tone: _CaptionTone.local,
+                          compact: true,
                         ),
+                      ),
+                  ],
                 ),
               ),
             ),
           ),
         ),
       ],
+    );
+  }
+}
+
+enum _CaptionTone { local, remote }
+
+class _GestureCaptionChip extends StatelessWidget {
+  const _GestureCaptionChip({
+    required this.text,
+    required this.tone,
+    this.compact = false,
+  });
+
+  final String text;
+  final _CaptionTone tone;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = tone == _CaptionTone.local
+        ? SignTalkColors.primaryBlue.withValues(alpha: 0.92)
+        : Colors.black.withValues(alpha: 0.72);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(compact ? 6 : 10),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: compact ? 4 : 10, vertical: compact ? 3 : 6),
+        child: Text(
+          text,
+          maxLines: compact ? 2 : 3,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: compact ? 8 : 12,
+            fontWeight: FontWeight.w600,
+            height: 1.2,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -540,6 +743,11 @@ class _ConnectionDetailsSection extends StatelessWidget {
             style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 11),
           ),
           const SizedBox(height: 8),
+          const Text(
+            'Gesture captions use the signaling WebSocket (type gesture_caption) when a data channel is not configured.',
+            style: TextStyle(fontSize: 11, color: SignTalkColors.secondaryText, height: 1.35),
+          ),
+          const SizedBox(height: 4),
           const Text(
             'Run the signaling server on your PC (port 8765). Use ws://127.0.0.1:8765 on this device or your LAN IP / wss:// when the app is served over HTTPS. Allow inbound TCP 8765 on Private networks in Windows Firewall if needed.',
             style: TextStyle(fontSize: 11, color: SignTalkColors.secondaryText, height: 1.35),

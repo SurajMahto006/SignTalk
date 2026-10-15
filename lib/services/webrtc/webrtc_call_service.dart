@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../gesture/gesture_detection.dart';
 import 'call_media_state.dart';
 import 'ice_candidate_buffer.dart';
 import 'webrtc_call_config.dart';
@@ -59,6 +60,12 @@ class WebRtcCallService extends ChangeNotifier {
   String lastIceConnectionState = 'new';
   String lastPeerConnectionState = 'new';
   int remoteTracksReceived = 0;
+
+  final StreamController<GestureCaptionMessage> _gestureCaptionController =
+      StreamController<GestureCaptionMessage>.broadcast();
+
+  /// Remote peer gesture captions relayed over signaling WebSocket.
+  Stream<GestureCaptionMessage> get gestureCaptions => _gestureCaptionController.stream;
 
   bool get isActive =>
       connectionState == CallConnectionState.connecting ||
@@ -579,10 +586,45 @@ class WebRtcCallService extends ChangeNotifier {
           await _handleAnswer(Map<String, dynamic>.from(msg['sdp'] as Map));
         case 'candidate':
           await _handleCandidate(Map<String, dynamic>.from(msg['candidate'] as Map));
+        case 'gesture_caption':
+          _handleGestureCaption(msg);
       }
     } catch (e) {
       _failSignaling('Bad signaling message: $e');
     }
+  }
+
+  void sendGestureCaption({
+    required String gesture,
+    required String label,
+    required double score,
+  }) {
+    if (!_signalingJoined || _participantId == null) return;
+    _send({
+      'type': 'gesture_caption',
+      'from': _participantId,
+      'gesture': gesture,
+      'label': label,
+      'score': score,
+    });
+  }
+
+  void _handleGestureCaption(Map<String, dynamic> msg) {
+    final from = msg['from']?.toString();
+    if (from != null && from == _participantId) return;
+    final label = msg['label']?.toString() ?? msg['gesture']?.toString() ?? '';
+    if (label.isEmpty) return;
+    final gesture = msg['gesture']?.toString() ?? label;
+    final score = (msg['score'] as num?)?.toDouble() ?? 0;
+    _gestureCaptionController.add(
+      GestureCaptionMessage(
+        fromParticipantId: from,
+        gesture: gesture,
+        label: label,
+        score: score,
+      ),
+    );
+    notifyListeners();
   }
 
   void _send(Map<String, dynamic> message) {
@@ -692,6 +734,11 @@ class WebRtcCallService extends ChangeNotifier {
     unawaited(hangUp(notify: false));
     unawaited(localRenderer.dispose());
     unawaited(remoteRenderer.dispose());
+    unawaited(_gestureCaptionController.close());
     super.dispose();
   }
 }
+
+/// HTML video element id used by flutter_webrtc on web (`video_RTCVideoRenderer-*`).
+String webrtcLocalVideoElementId(RTCVideoRenderer renderer) =>
+    'video_RTCVideoRenderer-${renderer.textureId}';
