@@ -17,7 +17,7 @@ class SettingsScreen extends StatelessWidget {
       listenable: Listenable.merge([prefs, permissionStatus]),
       builder: (context, _) {
         return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
           children: [
             const Center(
               child: Text(

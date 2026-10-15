@@ -20,11 +20,9 @@ class SpeechToTextScreen extends StatefulWidget {
   final void Function(String text) onSendToConversations;
 
   @override
-  @override
   State<SpeechToTextScreen> createState() => _SpeechToTextScreenState();
 }
 
-// Fix typo - class name
 class _SpeechToTextScreenState extends State<SpeechToTextScreen> {
   final _transcript = SpeechTranscriptController();
   final _textController = TextEditingController();
@@ -262,36 +260,70 @@ class _SpeechToTextScreenState extends State<SpeechToTextScreen> {
               onBack: widget.onBack,
               onSettings: () => _showSnack('Open the Settings tab for speech preferences.'),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
             Text(
-              'Speech input is live in Chrome (Web Speech API). Edit the transcript before sending or speaking.',
+              'Dictate in Chrome, then edit the transcript below.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             _MicrophoneCard(
               statusText: statusText,
               statusColor: _statusColor,
               language: _language,
+              listening: _isListening,
+              available: _available,
+              paused: _isPaused,
               onLanguageTap: _onLanguageTap,
+              onPrimaryMic: () {
+                if (_isListening) {
+                  unawaited(_stopListening());
+                } else {
+                  unawaited(_startListening());
+                }
+              },
             ),
             const SizedBox(height: 12),
             _TranscriptCard(controller: _textController),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
+            Text('Playback', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontSize: 13)),
+            const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
                   child: FilledButton.icon(
-                    onPressed: (!_available || _isPaused || _isListening) ? null : () => unawaited(_startListening()),
-                    icon: const Icon(Icons.mic, size: 18),
-                    label: const Text('Start Listening'),
+                    onPressed: tts.isSpeaking ? null : () => unawaited(_speakTranscript()),
+                    icon: const Icon(Icons.volume_up_outlined, size: 18),
+                    label: Text(tts.isSpeaking ? 'Speaking…' : 'Speak'),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _isListening ? () => unawaited(_stopListening()) : null,
-                    icon: const Icon(Icons.mic_off_outlined, size: 18),
+                    onPressed: tts.isSpeaking ? () => unawaited(_stopSpeaking()) : null,
+                    icon: const Icon(Icons.stop_circle_outlined, size: 18),
                     label: const Text('Stop'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Text('Transcript', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontSize: 13)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _copyTranscript,
+                    icon: const Icon(Icons.copy_outlined, size: 18),
+                    label: const Text('Copy'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _clearTranscript,
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    label: const Text('Clear'),
                   ),
                 ),
               ],
@@ -316,54 +348,10 @@ class _SpeechToTextScreenState extends State<SpeechToTextScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: tts.isSpeaking ? null : () => unawaited(_speakTranscript()),
-                    style: FilledButton.styleFrom(backgroundColor: SignTalkColors.primaryBlue),
-                    icon: const Icon(Icons.volume_up_outlined, size: 18),
-                    label: Text(tts.isSpeaking ? 'Speaking…' : 'Speak'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: tts.isSpeaking ? () => unawaited(_stopSpeaking()) : null,
-                    icon: const Icon(Icons.stop_circle_outlined, size: 18),
-                    label: const Text('Stop Speaking'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _copyTranscript,
-                    icon: const Icon(Icons.copy_outlined, size: 18),
-                    label: const Text('Copy'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _clearTranscript,
-                    icon: const Icon(Icons.delete_outline, size: 18),
-                    label: const Text('Clear'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 16),
             FilledButton.icon(
               onPressed: _sendToConversations,
-              style: FilledButton.styleFrom(
-                backgroundColor: SignTalkColors.speechPurple,
-                minimumSize: const Size.fromHeight(44),
-              ),
+              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
               icon: const Icon(Icons.chat_bubble_outline),
               label: const Text('Send to Conversations'),
             ),
@@ -425,36 +413,67 @@ class _MicrophoneCard extends StatelessWidget {
     required this.statusText,
     required this.statusColor,
     required this.language,
+    required this.listening,
+    required this.available,
+    required this.paused,
     required this.onLanguageTap,
+    required this.onPrimaryMic,
   });
 
   final String statusText;
   final Color statusColor;
   final String language;
+  final bool listening;
+  final bool available;
+  final bool paused;
   final VoidCallback onLanguageTap;
+  final VoidCallback onPrimaryMic;
 
   @override
   Widget build(BuildContext context) {
+    final micEnabled = available && !paused;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: SignTalkColors.card,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: SignTalkColors.border),
-        boxShadow: const [SignTalkColors.cardShadow],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
         child: Column(
           children: [
-            Text(statusText, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: statusColor)),
+            Semantics(
+              button: true,
+              label: listening ? 'Stop listening' : 'Start listening',
+              child: Material(
+                color: listening ? SignTalkColors.primaryBlue : SignTalkColors.tintBlue,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  onTap: micEnabled || listening ? onPrimaryMic : null,
+                  customBorder: const CircleBorder(),
+                  child: SizedBox(
+                    width: 72,
+                    height: 72,
+                    child: Icon(
+                      listening ? Icons.stop_rounded : Icons.mic,
+                      size: 32,
+                      color: listening ? Colors.white : SignTalkColors.primaryBlue,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(statusText, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: statusColor)),
             const SizedBox(height: 8),
             Material(
-              color: Colors.transparent,
+              color: SignTalkColors.dividerLight,
+              borderRadius: BorderRadius.circular(999),
               child: InkWell(
                 onTap: onLanguageTap,
                 borderRadius: BorderRadius.circular(999),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -484,22 +503,20 @@ class _TranscriptCard extends StatelessWidget {
         color: SignTalkColors.card,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: SignTalkColors.border),
-        boxShadow: const [SignTalkColors.cardShadow],
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Live transcript (editable)', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontSize: 12)),
+            Text('Editable transcript', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontSize: 13)),
             const SizedBox(height: 8),
             TextField(
               controller: controller,
-              minLines: 4,
-              maxLines: 8,
+              minLines: 5,
+              maxLines: 10,
               decoration: const InputDecoration(
-                hintText: 'Tap Start Listening and speak, or type here…',
-                border: OutlineInputBorder(),
+                hintText: 'Tap the microphone and speak, or type here…',
               ),
             ),
           ],

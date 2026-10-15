@@ -47,20 +47,19 @@ class HomeScreen extends StatelessWidget {
               ),
               const SizedBox(height: 14),
               _ActionCard(
-                iconBackground: SignTalkColors.speechPurpleBg,
-                iconColor: SignTalkColors.speechPurple,
+                iconBackground: SignTalkColors.tintBlue,
+                iconColor: SignTalkColors.primaryBlue,
                 icon: Icons.mic_none_outlined,
                 title: 'Speech to Text',
-                subtitle: 'Turn spoken words\ninto readable captions.',
+                subtitle: 'Dictate and edit\ncaptions in real time.',
                 onTap: onSpeechToTextTap,
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 16),
               _ConversationBar(onTap: onOpenConversations),
             ],
           ),
         ),
-        const SizedBox(height: 24),
-        const _RecentActivitySection(),
+        const SizedBox(height: 32),
       ],
     );
   }
@@ -187,7 +186,6 @@ class _ActionCard extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: SignTalkColors.border),
-            boxShadow: const [SignTalkColors.cardShadow],
           ),
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -286,123 +284,3 @@ class _ConversationBar extends StatelessWidget {
   }
 }
 
-class _RecentActivitySection extends StatelessWidget {
-  const _RecentActivitySection();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('Recent Activity', style: Theme.of(context).textTheme.titleSmall),
-              TextButton(
-                onPressed: () {},
-                style: TextButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  foregroundColor: SignTalkColors.primaryBlue,
-                ),
-                child: Text(
-                  'View all',
-                  style: Theme.of(context).textTheme.labelMedium,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: SignTalkColors.card,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: SignTalkColors.border),
-              boxShadow: const [SignTalkColors.cardShadow],
-            ),
-            child: Column(
-              children: [
-                _ActivityRow(
-                  iconBackground: SignTalkColors.primaryBlue,
-                  iconColor: Colors.white,
-                  icon: Icons.back_hand_outlined,
-                  title: 'Hello',
-                  subtitle: 'Sign to Text • 2 mins ago',
-                ),
-                Divider(height: 1, thickness: 1, color: Colors.grey.shade100),
-                _ActivityRow(
-                  iconBackground: SignTalkColors.speechPurpleBg,
-                  iconColor: SignTalkColors.speechPurple,
-                  icon: Icons.mic_none_outlined,
-                  title: 'How are you?',
-                  subtitle: 'Speech to Text • 15 mins ago',
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ActivityRow extends StatelessWidget {
-  const _ActivityRow({
-    required this.iconBackground,
-    required this.iconColor,
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-  });
-
-  final Color iconBackground;
-  final Color iconColor;
-  final IconData icon;
-  final String title;
-  final String subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () {},
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(color: iconBackground, shape: BoxShape.circle),
-                child: Icon(icon, color: iconColor, size: 18),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        height: 1.2,
-                        color: SignTalkColors.primaryText,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(subtitle, style: Theme.of(context).textTheme.labelSmall),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right, color: SignTalkColors.chevron, size: 18),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
