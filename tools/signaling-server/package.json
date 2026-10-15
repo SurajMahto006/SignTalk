@@ -3,7 +3,8 @@
   "private": true,
   "description": "Minimal WebSocket room relay for SignTalk WebRTC (run locally on your PC).",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test test/signaling-room.test.js"
   },
   "dependencies": {
     "ws": "^8.18.0"

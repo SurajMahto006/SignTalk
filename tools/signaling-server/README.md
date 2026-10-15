@@ -22,5 +22,5 @@ Default URL: `ws://YOUR_PC_LAN_IP:8765` (find IP with `ipconfig` → IPv4 on Wi�
 ## Limitations
 
 - **STUN only** (Google public STUN) is configured in the app. Some mobile networks need a **TURN** relay; if video never connects, try same Wi‑Fi or add TURN later.
-- **HTTPS**: Phone browsers may restrict camera/mic on plain `http://` LAN URLs. If permissions fail, use `flutter run` with a tunnel (ngrok/cloudflare) or serve web over HTTPS.
+- **HTTPS / WSS**: The server is plain `ws://` on port 8765. For Android camera/mic, put a **TLS tunnel or reverse proxy** in front (see `docs/WEBRTC_SECURE_DEMO.md`). Tunneling only the Flutter port **8080** does **not** secure signaling — expose **8765** separately as **`wss://`**.
 - This is **not** production signaling (no auth, no persistence).

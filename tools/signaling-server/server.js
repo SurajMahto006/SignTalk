@@ -1,10 +1,10 @@
 /**
- * Minimal SignTalk signaling server — relays SDP + ICE between peers in a room.
- * Run: cd tools/signaling-server && npm install ws && npm start
- * Listens on 0.0.0.0:8765 (configure SIGNALING_PORT env to override).
+ * SignTalk signaling server — relays SDP + ICE between peers in a room.
+ * Run: cd tools/signaling-server && npm install && npm start
  */
 const http = require('http');
 const WebSocket = require('ws');
+const room = require('./signaling-room');
 
 const port = Number(process.env.SIGNALING_PORT || 8765);
 const rooms = new Map();
@@ -16,62 +16,72 @@ const server = http.createServer((_req, res) => {
 
 const wss = new WebSocket.Server({ server });
 
-function peersInRoom(roomId, except) {
-  const set = rooms.get(roomId);
-  if (!set) return [];
-  return [...set].filter((ws) => ws !== except && ws.readyState === WebSocket.OPEN);
-}
-
 wss.on('connection', (ws, req) => {
   const clientIp = req.socket.remoteAddress;
   console.log(`[signaling] connect from ${clientIp}`);
 
   ws.on('message', (raw) => {
-    let msg;
-    try {
-      msg = JSON.parse(raw.toString());
-    } catch {
-      console.log(`[signaling] ignore non-JSON from ${clientIp}`);
+    const msg = room.parseMessage(raw);
+    if (!msg || typeof msg.type !== 'string') {
+      console.log(`[signaling] ignore invalid JSON from ${clientIp}`);
       return;
     }
 
-    const msgType = msg.type ?? 'unknown';
-
-    if (msg.type === 'join' && msg.room) {
-      ws.room = msg.room;
-      if (!rooms.has(msg.room)) rooms.set(msg.room, new Set());
-      rooms.get(msg.room).add(ws);
-      const others = peersInRoom(msg.room, ws);
-      console.log(
-        `[signaling] join room=${msg.room} from=${clientIp} peers=${others.length}`,
+    if (msg.type === 'join') {
+      const result = room.handleJoin(rooms, ws, msg);
+      if (result.error) {
+        ws.send(JSON.stringify({ type: 'error', message: result.error }));
+        console.log(`[signaling] join rejected from ${clientIp}: ${result.error}`);
+        return;
+      }
+      console.log(`[signaling] join room=${result.joined} peers=${result.peers}`);
+      ws.send(
+        JSON.stringify({
+          type: 'joined',
+          room: result.joined,
+          peers: result.peers,
+          participantId: ws.participantId,
+        }),
       );
-      ws.send(JSON.stringify({ type: 'joined', room: msg.room, peers: others.length }));
-      for (const peer of others) {
-        peer.send(JSON.stringify({ type: 'peer_joined', room: msg.room }));
+      for (const peer of room.peersInRoom(rooms, result.joined, ws)) {
+        peer.send(
+          JSON.stringify({
+            type: 'peer_joined',
+            room: result.joined,
+            peerId: ws.participantId,
+          }),
+        );
       }
       return;
     }
 
     if (!ws.room) {
-      console.log(`[signaling] ${msgType} before join from ${clientIp} (ignored)`);
+      console.log(`[signaling] ${msg.type} before join from ${clientIp}`);
       return;
     }
 
-    console.log(`[signaling] relay ${msgType} room=${ws.room} from=${clientIp}`);
-    for (const peer of peersInRoom(ws.room, ws)) {
+    if (!room.canRelay(msg)) {
+      console.log(`[signaling] blocked type=${msg.type} from ${clientIp}`);
+      return;
+    }
+
+    console.log(`[signaling] relay ${msg.type} room=${ws.room}`);
+    for (const peer of room.peersInRoom(rooms, ws.room, ws)) {
       peer.send(raw.toString());
     }
   });
 
-  ws.on('close', (code, reason) => {
-    const room = ws.room ?? '(none)';
-    const reasonText = reason?.toString() || '';
-    console.log(
-      `[signaling] close from=${clientIp} room=${room} code=${code} reason=${reasonText || '(empty)'}`,
-    );
-    if (!ws.room || !rooms.has(ws.room)) return;
-    rooms.get(ws.room).delete(ws);
-    if (rooms.get(ws.room).size === 0) rooms.delete(ws.room);
+  ws.on('close', (code) => {
+    const roomId = ws.room;
+    const left = room.handleLeave(rooms, ws);
+    console.log(`[signaling] close from=${clientIp} room=${roomId ?? '(none)'} code=${code}`);
+    if (left.notifyPeers && left.room) {
+      for (const peer of room.peersInRoom(rooms, left.room, ws)) {
+        peer.send(
+          JSON.stringify({ type: 'peer_left', room: left.room, peers: left.peers }),
+        );
+      }
+    }
   });
 
   ws.on('error', (err) => {

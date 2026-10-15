@@ -7,6 +7,8 @@ import '../../app/sign_talk_scope.dart';
 import '../../services/speech/speech_recognition_service.dart';
 import '../../services/speech/speech_transcript_controller.dart';
 import '../../services/speech/text_to_speech_service.dart';
+import '../../services/webrtc/call_media_state.dart';
+import '../../services/webrtc/webrtc_call_config.dart';
 import '../../services/webrtc/webrtc_call_service.dart';
 import '../../theme/sign_talk_colors.dart';
 
@@ -23,39 +25,25 @@ class VideoCallScreen extends StatefulWidget {
 class _VideoCallScreenState extends State<VideoCallScreen> {
   final _call = WebRtcCallService();
   final _roomController = TextEditingController(text: 'signtalk-demo');
-  final _signalUrlController =
-      TextEditingController(text: WebRtcCallService.defaultSignalingUrl);
+  late final TextEditingController _signalUrlController;
   final _assistController = TextEditingController();
   final _captions = SpeechTranscriptController();
   bool _captionsListening = false;
-  bool _assistExpanded = true;
+  bool _assistExpanded = false;
+  bool _connecting = false;
   SpeechRecognitionService? _speech;
   final List<StreamSubscription<dynamic>> _captionSubs = [];
 
   @override
   void initState() {
     super.initState();
-    _applyDefaultSignalingUrl();
+    _signalUrlController = TextEditingController(text: WebRtcCallConfig.signalingUrlForPage());
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await SignTalkScope.of(context).cameraPreview.stop();
       await _call.ensureRenderers();
       if (mounted) setState(() {});
     });
     _captions.addListener(_syncCaptionsToField);
-  }
-
-  /// Uses the page hostname on LAN so phones do not keep `ws://127.0.0.1`.
-  void _applyDefaultSignalingUrl() {
-    final pageHost = Uri.base.host;
-    if (pageHost.isEmpty) return;
-    final loopback = pageHost == 'localhost' || pageHost == '127.0.0.1';
-    final suggested = loopback
-        ? WebRtcCallService.defaultSignalingUrl
-        : 'ws://$pageHost:8765';
-    final current = _signalUrlController.text.trim();
-    if (current.isEmpty || current == WebRtcCallService.defaultSignalingUrl) {
-      _signalUrlController.text = suggested;
-    }
   }
 
   void _syncCaptionsToField() {
@@ -88,22 +76,57 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     super.dispose();
   }
 
-  Future<void> _hostCall() async {
-    await _call.connectToRoom(
-      signalingUrl: _signalUrlController.text,
-      roomId: _roomController.text,
-      asHost: true,
-    );
+  Future<void> _releaseCameraPreviewForCall() async {
+    final preview = SignTalkScope.of(context).cameraPreview;
+    if (preview.isActive) await preview.stop();
+  }
+
+  Future<void> _checkMedia() async {
+    if (_connecting) return;
+    _connecting = true;
     setState(() {});
+    await _releaseCameraPreviewForCall();
+    await _call.requestLocalMediaPreview();
+    _connecting = false;
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _hostCall() async {
+    if (_connecting) return;
+    _connecting = true;
+    setState(() {});
+    try {
+      await _releaseCameraPreviewForCall();
+      await _call.connectToRoom(
+        signalingUrl: _signalUrlController.text,
+        roomId: _roomController.text,
+        asHost: true,
+      );
+    } on ArgumentError catch (e) {
+      _showSnack(e.message ?? e.toString());
+    } finally {
+      _connecting = false;
+      if (mounted) setState(() {});
+    }
   }
 
   Future<void> _joinCall() async {
-    await _call.connectToRoom(
-      signalingUrl: _signalUrlController.text,
-      roomId: _roomController.text,
-      asHost: false,
-    );
+    if (_connecting) return;
+    _connecting = true;
     setState(() {});
+    try {
+      await _releaseCameraPreviewForCall();
+      await _call.connectToRoom(
+        signalingUrl: _signalUrlController.text,
+        roomId: _roomController.text,
+        asHost: false,
+      );
+    } on ArgumentError catch (e) {
+      _showSnack(e.message ?? e.toString());
+    } finally {
+      _connecting = false;
+      if (mounted) setState(() {});
+    }
   }
 
   Future<void> _endCall() async {
@@ -116,9 +139,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     if (_captionsListening) return;
     final scope = SignTalkScope.of(context);
     final speech = _speech = scope.speechRecognition;
-    if (_call.isActive) {
-      await _call.releaseMicForSpeechRecognition();
-    }
+    if (_call.isActive) await _call.releaseMicForSpeechRecognition();
     final ok = await speech.initialize();
     if (!mounted) return;
     if (!ok) {
@@ -181,104 +202,236 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     return ListenableBuilder(
       listenable: _call,
       builder: (context, _) {
-        final connected = _call.connectionState == CallConnectionState.connected;
+        final mediaConnected = _call.connectionState == CallConnectionState.connected;
         final islStatus = SignTalkScope.of(context).islRecognition.rawAdapter.displayName;
 
-        return Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-              child: Row(
-                children: [
-                  IconButton(onPressed: widget.onClose, icon: const Icon(Icons.close)),
-                  const Expanded(
-                    child: Text(
-                      'Live video call (WebRTC)',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => setState(() => _assistExpanded = !_assistExpanded),
-                    icon: Icon(_assistExpanded ? Icons.expand_more : Icons.expand_less),
-                    tooltip: 'Assistance panel',
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Text(
-                _call.statusMessage ?? 'Not connected',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: _call.errorMessage != null
-                      ? SignTalkColors.callRed
-                      : SignTalkColors.secondaryText,
-                ),
-              ),
-            ),
-            if (!_call.isActive) _LobbyPanel(
-              roomController: _roomController,
-              signalUrlController: _signalUrlController,
-              onHost: () => unawaited(_hostCall()),
-              onJoin: () => unawaited(_joinCall()),
-            ),
-            Expanded(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  ColoredBox(
-                    color: const Color(0xFF1C1C1E),
-                    child: _call.remoteRenderer.srcObject != null
-                        ? RTCVideoView(_call.remoteRenderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
-                        : Center(
-                            child: Text(
-                              connected ? 'Waiting for remote video…' : 'Start or join a call',
-                              style: const TextStyle(color: Colors.white70),
-                            ),
-                          ),
-                  ),
-                  Positioned(
-                    right: 12,
-                    top: 12,
-                    width: 110,
-                    height: 150,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: ColoredBox(
-                        color: Colors.black54,
-                        child: _call.localRenderer.srcObject != null
-                            ? RTCVideoView(_call.localRenderer, mirror: true)
-                            : const Center(
-                                child: Icon(Icons.videocam_off, color: Colors.white54),
-                              ),
+        return SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+                child: Row(
+                  children: [
+                    IconButton(onPressed: widget.onClose, icon: const Icon(Icons.close)),
+                    const Expanded(
+                      child: Text(
+                        'Live video call',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
                       ),
                     ),
-                  ),
-                ],
+                    IconButton(
+                      onPressed: () => setState(() => _assistExpanded = !_assistExpanded),
+                      icon: Icon(_assistExpanded ? Icons.expand_more : Icons.expand_less),
+                      tooltip: 'Assistance panel',
+                    ),
+                  ],
+                ),
               ),
-            ),
-            _CallControls(
-              micOn: _call.micEnabled,
-              cameraOn: _call.cameraEnabled,
-              onToggleMic: () => unawaited(_call.setMicEnabled(!_call.micEnabled)),
-              onToggleCamera: () => unawaited(_call.setCameraEnabled(!_call.cameraEnabled)),
-              onEnd: () => unawaited(_endCall()),
-            ),
-            if (_assistExpanded)
-              _AssistancePanel(
-                controller: _assistController,
-                captionsListening: _captionsListening,
-                islStatus: islStatus,
-                onStartCaptions: () => unawaited(_startCaptions()),
-                onStopCaptions: () => unawaited(_stopCaptions()),
-                onSpeak: () => unawaited(_speakAssistText()),
-                onTryIsl: () => unawaited(_tryIslFromCall()),
+              _CallStatusBanner(call: _call, connecting: _connecting),
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return SingleChildScrollView(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                        child: Column(
+                          children: [
+                            if (!_call.isActive)
+                              _LobbyPanel(
+                                roomController: _roomController,
+                                signalUrlController: _signalUrlController,
+                                connecting: _connecting,
+                                onCheckMedia: () => unawaited(_checkMedia()),
+                                onHost: () => unawaited(_hostCall()),
+                                onJoin: () => unawaited(_joinCall()),
+                              ),
+                            SizedBox(
+                              height: (constraints.maxHeight * 0.42).clamp(160, 320),
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  ColoredBox(
+                                    color: const Color(0xFF1C1C1E),
+                                    child: _call.remoteRenderer.srcObject != null
+                                        ? RTCVideoView(
+                                            _call.remoteRenderer,
+                                            objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                                          )
+                                        : Center(
+                                            child: Text(
+                                              mediaConnected
+                                                  ? 'Waiting for remote video…'
+                                                  : 'Remote participant video',
+                                              style: const TextStyle(color: Colors.white70, fontSize: 12),
+                                              textAlign: TextAlign.center,
+                                            ),
+                                          ),
+                                  ),
+                                  Positioned(
+                                    left: 8,
+                                    bottom: 8,
+                                    child: _MediaChip(
+                                      label: _call.hasRemoteAudio ? 'Remote audio' : 'No remote audio',
+                                      ok: _call.hasRemoteAudio,
+                                    ),
+                                  ),
+                                  Positioned(
+                                    right: 8,
+                                    top: 8,
+                                    width: 96,
+                                    height: 128,
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: ColoredBox(
+                                        color: Colors.black54,
+                                        child: _call.localRenderer.srcObject != null
+                                            ? RTCVideoView(_call.localRenderer, mirror: true)
+                                            : const Center(
+                                                child: Icon(Icons.videocam_off, color: Colors.white54, size: 28),
+                                              ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            _CallControls(
+                              enabled: _call.localMediaReady || _call.isActive,
+                              micOn: _call.micEnabled,
+                              cameraOn: _call.cameraEnabled,
+                              onToggleMic: () => unawaited(_call.setMicEnabled(!_call.micEnabled)),
+                              onToggleCamera: () => unawaited(_call.setCameraEnabled(!_call.cameraEnabled)),
+                              onEnd: () => unawaited(_endCall()),
+                            ),
+                            if (_assistExpanded)
+                              _AssistancePanel(
+                                controller: _assistController,
+                                captionsListening: _captionsListening,
+                                islStatus: islStatus,
+                                onStartCaptions: () => unawaited(_startCaptions()),
+                                onStopCaptions: () => unawaited(_stopCaptions()),
+                                onSpeak: () => unawaited(_speakAssistText()),
+                                onTryIsl: () => unawaited(_tryIslFromCall()),
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ),
-          ],
+            ],
+          ),
         );
       },
+    );
+  }
+}
+
+class _CallStatusBanner extends StatelessWidget {
+  const _CallStatusBanner({required this.call, required this.connecting});
+
+  final WebRtcCallService call;
+  final bool connecting;
+
+  @override
+  Widget build(BuildContext context) {
+    final error = call.errorMessage;
+    final status = call.statusMessage ?? 'Not connected';
+    final media = call.mediaAccessDetail;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            connecting ? 'Working…' : status,
+            style: TextStyle(
+              fontSize: 12,
+              color: error != null ? SignTalkColors.callRed : SignTalkColors.secondaryText,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              _MediaChip(label: _signalingLabel(call.signalingState), ok: call.signalingState == CallSignalingState.joined),
+              _MediaChip(label: _mediaPathLabel(call.mediaPathState), ok: call.mediaPathState == CallMediaPathState.connected),
+              _MediaChip(label: _accessLabel(call.mediaAccessState), ok: call.mediaAccessState == CallMediaAccessState.granted),
+            ],
+          ),
+          if (media != null) ...[
+            const SizedBox(height: 4),
+            Text(media, style: Theme.of(context).textTheme.bodySmall),
+          ],
+          if (!WebRtcCallConfig.pageIsSecureContext) ...[
+            const SizedBox(height: 6),
+            Text(
+              WebRtcCallConfig.secureContextHint,
+              style: TextStyle(fontSize: 10, color: SignTalkColors.callRed.withValues(alpha: 0.9)),
+            ),
+          ],
+          const SizedBox(height: 4),
+          Text(
+            'Tracks — local: ${call.hasLocalVideo ? 1 : 0}v/${call.hasLocalAudio ? 1 : 0}a · '
+            'remote: ${call.hasRemoteVideo ? 1 : 0}v/${call.hasRemoteAudio ? 1 : 0}a · '
+            'remote events: ${call.remoteTracksReceived} · '
+            'ICE: ${call.lastIceConnectionState} · peer: ${call.lastPeerConnectionState}',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 10),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _signalingLabel(CallSignalingState s) => switch (s) {
+        CallSignalingState.joined => 'Signaling joined',
+        CallSignalingState.connecting => 'Signaling…',
+        CallSignalingState.disconnected => 'Signaling lost',
+        CallSignalingState.failed => 'Signaling failed',
+        _ => 'Signaling idle',
+      };
+
+  static String _mediaPathLabel(CallMediaPathState s) => switch (s) {
+        CallMediaPathState.connected => 'Media connected',
+        CallMediaPathState.negotiating => 'Negotiating',
+        CallMediaPathState.preparingLocalMedia => 'Opening camera/mic',
+        CallMediaPathState.reconnecting => 'Reconnecting',
+        CallMediaPathState.failed => 'Media failed',
+        _ => 'Media idle',
+      };
+
+  static String _accessLabel(CallMediaAccessState s) => switch (s) {
+        CallMediaAccessState.granted => 'Permissions OK',
+        CallMediaAccessState.requesting => 'Requesting…',
+        CallMediaAccessState.denied => 'Permission denied',
+        CallMediaAccessState.unavailable => 'No device',
+        CallMediaAccessState.error => 'Media error',
+        _ => 'Media not checked',
+      };
+}
+
+class _MediaChip extends StatelessWidget {
+  const _MediaChip({required this.label, required this.ok});
+
+  final String label;
+  final bool ok;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: ok ? SignTalkColors.tintBlue : SignTalkColors.card,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: ok ? SignTalkColors.primaryBlue.withValues(alpha: 0.4) : SignTalkColors.border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        child: Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w500)),
+      ),
     );
   }
 }
@@ -287,55 +440,75 @@ class _LobbyPanel extends StatelessWidget {
   const _LobbyPanel({
     required this.roomController,
     required this.signalUrlController,
+    required this.connecting,
+    required this.onCheckMedia,
     required this.onHost,
     required this.onJoin,
   });
 
   final TextEditingController roomController;
   final TextEditingController signalUrlController;
+  final bool connecting;
+  final VoidCallback onCheckMedia;
   final VoidCallback onHost;
   final VoidCallback onJoin;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
       child: Column(
         children: [
           TextField(
             controller: signalUrlController,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Signaling WebSocket URL',
-              hintText: 'ws://192.168.1.10:8765',
-              border: OutlineInputBorder(),
+              hintText: WebRtcCallConfig.signalingUrlForPage(),
+              border: const OutlineInputBorder(),
+              isDense: true,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           TextField(
             controller: roomController,
             decoration: const InputDecoration(
               labelText: 'Room ID (same on both devices)',
               border: OutlineInputBorder(),
+              isDense: true,
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: connecting ? null : onCheckMedia,
+              child: const Text('Check camera & microphone'),
             ),
           ),
           const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
-                child: FilledButton(onPressed: onHost, child: const Text('Host call')),
+                child: FilledButton(
+                  onPressed: connecting ? null : onHost,
+                  child: const Text('Host call'),
+                ),
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: OutlinedButton(onPressed: onJoin, child: const Text('Join call')),
+                child: OutlinedButton(
+                  onPressed: connecting ? null : onJoin,
+                  child: const Text('Join call'),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 6),
           const Text(
-            'Run tools/signaling-server on your PC (listens on 0.0.0.0:8765). '
-            'Phone opens the app via your PC LAN IP; signaling URL should match that IP. '
-            'If join fails, allow inbound TCP 8765 on Private networks in Windows Firewall.',
-            style: TextStyle(fontSize: 11, color: SignTalkColors.secondaryText),
+            'Start the signaling server on your PC (port 8765). Laptop may use ws://127.0.0.1:8765; '
+            'phone must use your PC LAN IP or wss:// when the app is served over HTTPS. '
+            'Allow inbound TCP 8765 on Private networks in Windows Firewall if needed.',
+            style: TextStyle(fontSize: 10, color: SignTalkColors.secondaryText),
           ),
         ],
       ),
@@ -345,6 +518,7 @@ class _LobbyPanel extends StatelessWidget {
 
 class _CallControls extends StatelessWidget {
   const _CallControls({
+    required this.enabled,
     required this.micOn,
     required this.cameraOn,
     required this.onToggleMic,
@@ -352,6 +526,7 @@ class _CallControls extends StatelessWidget {
     required this.onEnd,
   });
 
+  final bool enabled;
   final bool micOn;
   final bool cameraOn;
   final VoidCallback onToggleMic;
@@ -361,23 +536,23 @@ class _CallControls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           _RoundBtn(
             icon: micOn ? Icons.mic : Icons.mic_off,
-            label: micOn ? 'Mute' : 'Unmute',
-            onTap: onToggleMic,
+            label: micOn ? 'Mute mic' : 'Unmute mic',
+            onTap: enabled ? onToggleMic : null,
           ),
           _RoundBtn(
             icon: cameraOn ? Icons.videocam : Icons.videocam_off,
-            label: cameraOn ? 'Cam off' : 'Cam on',
-            onTap: onToggleCamera,
+            label: cameraOn ? 'Camera off' : 'Camera on',
+            onTap: enabled ? onToggleCamera : null,
           ),
           _RoundBtn(
             icon: Icons.call_end,
-            label: 'End',
+            label: 'End call',
             color: SignTalkColors.callRed,
             onTap: onEnd,
           ),
@@ -397,28 +572,34 @@ class _RoundBtn extends StatelessWidget {
 
   final IconData icon;
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final Color? color;
 
   @override
   Widget build(BuildContext context) {
+    final disabled = onTap == null;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Material(
-          color: color ?? SignTalkColors.card,
+          color: disabled ? SignTalkColors.border.withValues(alpha: 0.3) : (color ?? SignTalkColors.card),
           shape: const CircleBorder(),
           child: InkWell(
             onTap: onTap,
             customBorder: const CircleBorder(),
             child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Icon(icon, color: color != null ? Colors.white : SignTalkColors.primaryText),
+              padding: const EdgeInsets.all(12),
+              child: Icon(
+                icon,
+                color: disabled
+                    ? SignTalkColors.secondaryText
+                    : (color != null ? Colors.white : SignTalkColors.primaryText),
+              ),
             ),
           ),
         ),
-        const SizedBox(height: 4),
-        Text(label, style: const TextStyle(fontSize: 11)),
+        const SizedBox(height: 2),
+        Text(label, style: const TextStyle(fontSize: 10), textAlign: TextAlign.center),
       ],
     );
   }
@@ -455,34 +636,35 @@ class _AssistancePanel extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('SignTalk assistance (call stays active)', style: TextStyle(fontWeight: FontWeight.w600)),
+            const Text('Assistance (optional)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
             Text('ISL: $islStatus', style: Theme.of(context).textTheme.bodySmall),
             const SizedBox(height: 6),
             TextField(
               controller: controller,
               minLines: 2,
-              maxLines: 4,
+              maxLines: 3,
               decoration: const InputDecoration(
-                hintText: 'Captions / editable text for TTS…',
+                hintText: 'Captions / text for TTS…',
                 border: OutlineInputBorder(),
+                isDense: true,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton(
                     onPressed: captionsListening ? onStopCaptions : onStartCaptions,
-                    child: Text(captionsListening ? 'Stop captions' : 'Start captions'),
+                    child: Text(captionsListening ? 'Stop captions' : 'Captions'),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: FilledButton(onPressed: onSpeak, child: const Text('Speak text')),
+                  child: FilledButton(onPressed: onSpeak, child: const Text('Speak')),
                 ),
               ],
             ),
-            TextButton(onPressed: onTryIsl, child: const Text('Check ISL model adapter')),
+            TextButton(onPressed: onTryIsl, child: const Text('ISL adapter status')),
           ],
         ),
       ),
