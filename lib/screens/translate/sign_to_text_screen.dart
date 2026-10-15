@@ -369,36 +369,25 @@ class _InfoPill extends StatelessWidget {
 
   final String status;
 
-  static const _infoBlueBg = Color(0xB3EBF4FF);
-  static const _infoBlueBorder = Color(0x33007AFF);
-
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: _infoBlueBg,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: _infoBlueBorder),
+        color: SignTalkColors.tintBlue,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: SignTalkColors.tintBlueBorder),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Row(
-          children: [
-            Icon(Icons.info, size: 16, color: SignTalkColors.primaryBlue.withValues(alpha: 0.95)),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Camera preview only — $status',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: SignTalkColors.primaryText,
-                    ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Text(
+          'Preview only · $status',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: SignTalkColors.secondaryText,
               ),
-            ),
-          ],
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
         ),
       ),
     );

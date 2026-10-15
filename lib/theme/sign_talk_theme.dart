@@ -51,6 +51,11 @@ abstract final class SignTalkTheme {
       ),
     );
 
+    final inputBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: SignTalkColors.border),
+    );
+
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
@@ -64,6 +69,34 @@ abstract final class SignTalkTheme {
       textTheme: textTheme,
       splashColor: SignTalkColors.primaryBlue.withValues(alpha: 0.08),
       highlightColor: SignTalkColors.primaryBlue.withValues(alpha: 0.05),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: SignTalkColors.primaryBlue,
+          foregroundColor: Colors.white,
+          minimumSize: const Size(48, 48),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: SignTalkColors.primaryBlue,
+          minimumSize: const Size(48, 48),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          side: const BorderSide(color: SignTalkColors.border),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: SignTalkColors.card,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        border: inputBorder,
+        enabledBorder: inputBorder,
+        focusedBorder: inputBorder.copyWith(
+          borderSide: const BorderSide(color: SignTalkColors.primaryBlue, width: 1.5),
+        ),
+        labelStyle: const TextStyle(color: SignTalkColors.secondaryText, fontSize: 13),
+      ),
     );
   }
 }

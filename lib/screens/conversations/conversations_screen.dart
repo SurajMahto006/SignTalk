@@ -229,7 +229,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
               ? const _EmptyConversation()
               : ListView.builder(
                   controller: _scrollController,
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                   itemCount: _messages.length + 1,
                   itemBuilder: (context, index) {
                     if (index == 0) {
@@ -547,9 +547,8 @@ class _BubbleCard extends StatelessWidget {
         color: background,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: borderColor),
-        boxShadow: const [SignTalkColors.cardShadow],
       ),
-      child: Padding(padding: const EdgeInsets.all(16), child: child),
+      child: Padding(padding: const EdgeInsets.fromLTRB(16, 14, 16, 12), child: child),
     );
   }
 }
@@ -578,7 +577,7 @@ class _ComposerSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
       child: Column(
         children: [
           Row(

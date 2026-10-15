@@ -59,10 +59,10 @@ class _MainShellState extends State<MainShell> {
 
   void _onTabSelected(int index) {
     setState(() {
-      _selectedIndex = index;
-      if (index == 1) {
+      if (index == 1 && _selectedIndex != 1) {
         _translateScreen = _TranslateScreen.signToText;
       }
+      _selectedIndex = index;
     });
   }
 
@@ -112,17 +112,29 @@ class _MainShellState extends State<MainShell> {
           onSpeechToTextTap: _openSpeechToText,
           onOpenConversations: _openConversations,
         ),
-      1 => switch (_translateScreen) {
-          _TranslateScreen.signToText => SignToTextScreen(
-              onBack: _goHome,
-              onSendToConversations: (text, {asRecognizedSign = false}) =>
-                  _sendTextToConversations(text, asRecognizedSign: asRecognizedSign),
+      1 => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _TranslateModeBar(
+              signSelected: _translateScreen == _TranslateScreen.signToText,
+              onSign: () => setState(() => _translateScreen = _TranslateScreen.signToText),
+              onSpeech: () => setState(() => _translateScreen = _TranslateScreen.speechToText),
             ),
-          _TranslateScreen.speechToText => SpeechToTextScreen(
-              onBack: _goHome,
-              onSendToConversations: (text) => _sendTextToConversations(text, asSpoken: true),
+            Expanded(
+              child: switch (_translateScreen) {
+                _TranslateScreen.signToText => SignToTextScreen(
+                    onBack: _goHome,
+                    onSendToConversations: (text, {asRecognizedSign = false}) =>
+                        _sendTextToConversations(text, asRecognizedSign: asRecognizedSign),
+                  ),
+                _TranslateScreen.speechToText => SpeechToTextScreen(
+                    onBack: _goHome,
+                    onSendToConversations: (text) => _sendTextToConversations(text, asSpoken: true),
+                  ),
+              },
             ),
-        },
+          ],
+        ),
       2 => ConversationsScreen(
           key: ValueKey(_conversationsSession),
           onOpenVideoCall: _openVideoCall,
@@ -130,6 +142,86 @@ class _MainShellState extends State<MainShell> {
       3 => SettingsScreen(permissionStatus: widget.permissionStatus),
       _ => _TabPlaceholder(title: _tabLabels[_selectedIndex]),
     };
+  }
+}
+
+class _TranslateModeBar extends StatelessWidget {
+  const _TranslateModeBar({
+    required this.signSelected,
+    required this.onSign,
+    required this.onSpeech,
+  });
+
+  final bool signSelected;
+  final VoidCallback onSign;
+  final VoidCallback onSpeech;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: SignTalkColors.dividerLight,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: SignTalkColors.border),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: Row(
+            children: [
+              Expanded(
+                child: _SegmentChip(
+                  label: 'Sign to Text',
+                  selected: signSelected,
+                  onTap: onSign,
+                ),
+              ),
+              Expanded(
+                child: _SegmentChip(
+                  label: 'Speech to Text',
+                  selected: !signSelected,
+                  onTap: onSpeech,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SegmentChip extends StatelessWidget {
+  const _SegmentChip({required this.label, required this.selected, required this.onTap});
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? SignTalkColors.card : Colors.transparent,
+      borderRadius: BorderRadius.circular(10),
+      elevation: selected ? 0.5 : 0,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+              color: selected ? SignTalkColors.primaryText : SignTalkColors.secondaryText,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
