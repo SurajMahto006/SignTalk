@@ -31,6 +31,14 @@ void main() {
     );
   });
 
+  test('paired public demo app host uses centralized WSS signaling URL', () {
+    final url = WebRtcCallConfig.signalingUrlForContext(
+      scheme: 'https',
+      host: 'informed-surge-travelling-lighting.trycloudflare.com',
+    );
+    expect(url, 'wss://angeles-sunny-ice-anybody.trycloudflare.com');
+  });
+
   test('LAN http host still uses ws on same host', () {
     final url = WebRtcCallConfig.signalingUrlForContext(
       scheme: 'http',

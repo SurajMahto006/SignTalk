@@ -21,7 +21,7 @@
 | 3 | `cloudflared tunnel --url http://127.0.0.1:8080` | Public **HTTPS** app URL |
 | 4 (extra) | `cloudflared tunnel --url http://127.0.0.1:8765` | Public **WSS** for signaling (second URL) |
 
-Tunneling **only 8080** does **not** expose signaling. On the phone, open the **app** `https://….trycloudflare.com` URL, then in Video call paste **`wss://….trycloudflare.com`** from the **signaling** tunnel (no `:8765` on the public URL). Optional on PC when you run Flutter: `--dart-define=SIGNALING_URL=wss://YOUR-SIGNAL-TUNNEL-HOST` (change each run — do not commit).
+Tunneling **only 8080** does **not** expose signaling. On the phone, open the **app** `https://….trycloudflare.com` URL, then in Video call paste **`wss://….trycloudflare.com`** from the **signaling** tunnel (no `:8765` on the public URL). For repeat demos, you can pair tunnels in one place: `lib/services/webrtc/sign_talk_public_demo_config.dart` (update app host + WSS when URLs change). Optional: `--dart-define=SIGNALING_URL=wss://YOUR-SIGNAL-TUNNEL-HOST` when starting Flutter.
 
 Verify locally before tunnels:
 

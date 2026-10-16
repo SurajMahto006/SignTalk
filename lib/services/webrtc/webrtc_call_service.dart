@@ -131,9 +131,17 @@ class WebRtcCallService extends ChangeNotifier {
     mediaPathState = CallMediaPathState.negotiating;
     notifyListeners();
 
+    final trimmedUrl = signalingUrl.trim();
+    if (trimmedUrl.isEmpty) {
+      _failSignaling(
+        'Signaling WebSocket URL is empty. For Cloudflare demos, open the public app URL or set SIGNALING_URL / sign_talk_public_demo_config.dart.',
+      );
+      return;
+    }
+
     try {
       await ensureRenderers();
-      final uri = Uri.parse(signalingUrl.trim());
+      final uri = Uri.parse(trimmedUrl);
       _logSignaling('connect uri=$uri room=$_roomId host=$asHost id=$_participantId');
       _channel = WebSocketChannel.connect(uri);
       try {

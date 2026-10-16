@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import 'sign_talk_public_demo_config.dart';
+
 /// ICE and signaling defaults (override at build/run time via `--dart-define`).
 class WebRtcCallConfig {
   WebRtcCallConfig._();
@@ -56,17 +58,22 @@ class WebRtcCallConfig {
         h.endsWith('.ngrok.app');
   }
 
-  /// True when the UI should ask for a separate WSS URL (no dart-define override).
+  /// True when the UI should ask for a separate WSS URL (no override / demo pairing).
   static bool get needsSeparateSignalingTunnel {
     if (signalingUrlOverride.isNotEmpty) return false;
     final host = Uri.base.host;
     if (host.isEmpty) return false;
+    if (SignTalkPublicDemoConfig.signalingWssForPageHost(host) != null) return false;
     return Uri.base.scheme == 'https' && hostUsesAppOnlyQuickTunnel(host);
   }
 
-  static String get tunnelSignalingSetupHint =>
-      'Paste the WebSocket URL from your **signaling** Cloudflare/ngrok tunnel (port 8765 → wss://…). '
-      'The app tunnel does not include signaling.';
+  static String get tunnelSignalingSetupHint {
+    if (SignTalkPublicDemoConfig.signalingWssForPageHost(Uri.base.host) != null) {
+      return 'Using configured public signaling tunnel (WSS). Same room ID on both devices.';
+    }
+    return 'Paste the WebSocket URL from your **signaling** Cloudflare/ngrok tunnel (port 8765 → wss://…). '
+        'The app tunnel does not include signaling.';
+  }
 
   /// Suggested signaling WebSocket URL from the page origin (LAN-friendly).
   static String signalingUrlForPage({int port = defaultSignalingPort}) {
@@ -86,6 +93,9 @@ class WebRtcCallConfig {
     String override = '',
   }) {
     if (override.trim().isNotEmpty) return override.trim();
+
+    final demoWss = SignTalkPublicDemoConfig.signalingWssForPageHost(host);
+    if (demoWss != null && demoWss.isNotEmpty) return demoWss;
 
     if (host.isEmpty) {
       return 'ws://127.0.0.1:$port';
