@@ -29,3 +29,17 @@ class GestureCaptionMessage {
   final String label;
   final double score;
 }
+
+class IslCaptionMessage {
+  const IslCaptionMessage({
+    required this.fromParticipantId,
+    required this.word,
+    required this.sentence,
+    required this.confidence,
+  });
+
+  final String? fromParticipantId;
+  final String word;
+  final String sentence;
+  final double confidence;
+}

@@ -63,9 +63,14 @@ class WebRtcCallService extends ChangeNotifier {
 
   final StreamController<GestureCaptionMessage> _gestureCaptionController =
       StreamController<GestureCaptionMessage>.broadcast();
+  final StreamController<IslCaptionMessage> _islCaptionController =
+      StreamController<IslCaptionMessage>.broadcast();
 
   /// Remote peer gesture captions relayed over signaling WebSocket.
   Stream<GestureCaptionMessage> get gestureCaptions => _gestureCaptionController.stream;
+
+  /// Remote peer ISL word / sentence updates relayed over signaling WebSocket.
+  Stream<IslCaptionMessage> get islCaptions => _islCaptionController.stream;
 
   bool get isActive =>
       connectionState == CallConnectionState.connecting ||
@@ -596,6 +601,8 @@ class WebRtcCallService extends ChangeNotifier {
           await _handleCandidate(Map<String, dynamic>.from(msg['candidate'] as Map));
         case 'gesture_caption':
           _handleGestureCaption(msg);
+        case 'isl_caption':
+          _handleIslCaption(msg);
       }
     } catch (e) {
       _failSignaling('Bad signaling message: $e');
@@ -632,6 +639,40 @@ class WebRtcCallService extends ChangeNotifier {
         gesture: gesture,
         label: label,
         score: score,
+      ),
+    );
+    notifyListeners();
+  }
+
+  bool sendIslCaption({
+    required String word,
+    required String sentence,
+    required double confidence,
+  }) {
+    if (!_signalingJoined || _participantId == null) return false;
+    _send({
+      'type': 'isl_caption',
+      'from': _participantId,
+      'word': word,
+      'sentence': sentence,
+      'confidence': confidence,
+    });
+    return true;
+  }
+
+  void _handleIslCaption(Map<String, dynamic> msg) {
+    final from = msg['from']?.toString();
+    if (from != null && from == _participantId) return;
+    final word = msg['word']?.toString() ?? '';
+    final sentence = msg['sentence']?.toString() ?? word;
+    if (word.isEmpty && sentence.isEmpty) return;
+    final confidence = (msg['confidence'] as num?)?.toDouble() ?? 0;
+    _islCaptionController.add(
+      IslCaptionMessage(
+        fromParticipantId: from,
+        word: word,
+        sentence: sentence,
+        confidence: confidence,
       ),
     );
     notifyListeners();

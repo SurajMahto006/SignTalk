@@ -12,6 +12,9 @@ import '../../services/webrtc/call_media_state.dart';
 import '../../services/webrtc/webrtc_call_config.dart';
 import '../../services/gesture/gesture_demo_labels.dart';
 import '../../services/gesture/gesture_recognizer_service.dart';
+import '../../services/isl/http_isl_recognition_adapter.dart';
+import '../../services/isl/isl_live_recognition.dart';
+import '../../services/isl/isl_sentence_composer.dart';
 import '../../services/webrtc/webrtc_call_service.dart';
 import '../../theme/sign_talk_colors.dart';
 
@@ -57,6 +60,18 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   String? _lastRemoteDetectCaption;
   DateTime? _lastRemoteDetectAt;
   bool _gestureHelpExpanded = false;
+  final _islLive = IslLiveRecognition();
+  final _islComposer = IslSentenceComposer();
+  Timer? _islPollTimer;
+  Timer? _islComposerTickTimer;
+  StreamSubscription<IslCaptionMessage>? _islCaptionSub;
+  bool _islPipelineActive = false;
+  bool _islRecognizeBusy = false;
+  String _islStatus = 'ISL idle';
+  String? _localIslSentence;
+  String? _remoteIslSentence;
+  String _lastSentIslSentence = '';
+  String? _islLiveWord;
 
   @override
   void initState() {
@@ -64,6 +79,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _signalUrlController = TextEditingController(text: WebRtcCallConfig.signalingUrlForPage());
     _call.addListener(_syncGesturePipelineWithCall);
     _remoteGestureSub = _call.gestureCaptions.listen(_onRemoteGestureCaption);
+    _islCaptionSub = _call.islCaptions.listen(_onRemoteIslCaption);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await SignTalkScope.of(context).cameraPreview.stop();
       await _call.ensureRenderers();
@@ -86,6 +102,114 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       unawaited(_startRemoteGesturePipeline());
     } else if (!remoteShould && _remoteGesturePipelineActive) {
       _stopRemoteGesturePipeline();
+    }
+
+    _syncIslPipelineWithCall();
+  }
+
+  void _syncIslPipelineWithCall() {
+    final should = _call.isActive && _call.hasLocalVideo && _islLive.isSupported;
+    if (should && !_islPipelineActive) {
+      unawaited(_startIslPipeline());
+    } else if (!should && _islPipelineActive) {
+      _stopIslPipeline();
+    }
+  }
+
+  Future<void> _startIslPipeline() async {
+    if (_islPipelineActive) return;
+    _islPipelineActive = true;
+    _islComposer.reset();
+    SignTalkScope.of(context).islRecognition.resetSmoothing();
+    _islPollTimer?.cancel();
+    _islPollTimer = Timer.periodic(const Duration(milliseconds: 1100), (_) => unawaited(_pollIslFromLocalVideo()));
+    _islComposerTickTimer?.cancel();
+    _islComposerTickTimer = Timer.periodic(const Duration(milliseconds: 400), (_) {
+      final utteranceEnded = _islComposer.tick();
+      if (utteranceEnded && mounted) {
+        _localIslSentence = null;
+        _islLiveWord = null;
+        _lastSentIslSentence = '';
+        SignTalkScope.of(context).islRecognition.resetSmoothing();
+        setState(() => _islStatus = 'ISL — ready for next sentence');
+      } else {
+        _syncIslSentenceToUi();
+      }
+    });
+    if (mounted) {
+      setState(() => _islStatus = 'ISL — hold signs; pauses build a sentence');
+    }
+    unawaited(_pollIslFromLocalVideo());
+  }
+
+  void _stopIslPipeline() {
+    _islPollTimer?.cancel();
+    _islPollTimer = null;
+    _islComposerTickTimer?.cancel();
+    _islComposerTickTimer = null;
+    _islPipelineActive = false;
+    if (mounted) {
+      setState(() {
+        _islStatus = 'ISL stopped';
+        _localIslSentence = null;
+      });
+    }
+  }
+
+  Future<void> _pollIslFromLocalVideo() async {
+    if (!_islPipelineActive || _islRecognizeBusy || !_call.isActive) return;
+    _islRecognizeBusy = true;
+    final videoId = webrtcLocalVideoElementId(_call.localRenderer);
+    final isl = SignTalkScope.of(context).islRecognition;
+    final result = await _islLive.recognizeFromVideo(isl: isl, videoElementId: videoId, frameCount: 8);
+    if (!mounted) return;
+    _islRecognizeBusy = false;
+
+    if (result.isSuccess && result.label != null) {
+      _islComposer.observeStableWord(result.label!);
+      _islLiveWord = _islComposer.liveWordLabel;
+      _syncIslSentenceToUi();
+      _maybeRelayIslCaption(
+        word: _islComposer.glosses.isNotEmpty ? _islComposer.glosses.last : result.label!,
+        confidence: result.confidence ?? 0,
+      );
+      setState(() => _islStatus = 'ISL word: ${result.label}');
+    } else if (result.uncertain) {
+      setState(() => _islStatus = result.message ?? 'ISL detecting…');
+    }
+  }
+
+  void _maybeRelayIslCaption({required String word, required double confidence}) {
+    final sentence = _islComposer.readableSentence;
+    if (sentence.isEmpty) return;
+    if (sentence == _lastSentIslSentence) return;
+    _lastSentIslSentence = sentence;
+    _call.sendIslCaption(word: word, sentence: sentence, confidence: confidence);
+  }
+
+  void _syncIslSentenceToUi() {
+    _islLiveWord = _islComposer.liveWordLabel.isNotEmpty ? _islComposer.liveWordLabel : _islLiveWord;
+    final text = _islComposer.readableSentence.isNotEmpty
+        ? _islComposer.readableSentence
+        : _islComposer.displayText;
+    if (text.isEmpty) return;
+    _localIslSentence = text;
+    _assistController.text = text;
+    _assistController.selection = TextSelection.collapsed(offset: text.length);
+    if (mounted) setState(() {});
+  }
+
+  void _onRemoteIslCaption(IslCaptionMessage msg) {
+    if (!mounted) return;
+    setState(() {
+      _remoteIslSentence = msg.sentence.isNotEmpty ? msg.sentence : msg.word;
+    });
+    final prefs = SignTalkScope.preferencesOf(context);
+    if (prefs.spokenOutputEnabled && msg.sentence.isNotEmpty) {
+      unawaited(SignTalkScope.of(context).textToSpeech.speak(
+            'Partner signed: ${msg.sentence}',
+            enabled: true,
+          ));
     }
   }
 
@@ -317,6 +441,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   @override
   void deactivate() {
     _stopGesturePipeline();
+    _stopIslPipeline();
     unawaited(_stopCaptions());
     unawaited(_call.hangUp());
     super.deactivate();
@@ -325,8 +450,10 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   @override
   void dispose() {
     _stopGesturePipeline();
+    _stopIslPipeline();
     _call.removeListener(_syncGesturePipelineWithCall);
     unawaited(_remoteGestureSub?.cancel());
+    unawaited(_islCaptionSub?.cancel());
     for (final s in _captionSubs) {
       unawaited(s.cancel());
     }
@@ -453,10 +580,16 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   Future<void> _tryIslFromCall() async {
     final isl = SignTalkScope.of(context).islRecognition;
-    final result = await isl.recognizeClip(jpegFrames: const []);
+    final raw = isl.rawAdapter;
+    if (raw is HttpIslRecognitionAdapter) {
+      await raw.refreshHealth();
+    }
+    final videoId = webrtcLocalVideoElementId(_call.localRenderer);
+    final result = await _islLive.recognizeFromVideo(isl: isl, videoElementId: videoId);
     _showSnack(result.message ?? isl.rawAdapter.displayName);
     if (result.isSuccess && result.label != null) {
-      _assistController.text = result.label!;
+      _islComposer.observeStableWord(result.label!);
+      _syncIslSentenceToUi();
     }
   }
 
@@ -505,6 +638,15 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                             color: inCall ? Colors.white60 : SignTalkColors.secondaryText,
                           ),
                         ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _islStatus,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: inCall ? Colors.white54 : SignTalkColors.secondaryText,
+                          ),
+                        ),
                       ],
                     ],
                   ),
@@ -535,6 +677,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                                   showRemotePlaceholder: true,
                                   localCaption: _localGestureCaption,
                                   remoteCaption: _remoteGestureCaption,
+                                  islLocalSentence: _localIslSentence,
+                                  islLocalLiveWord: _islLiveWord,
+                                  islPartnerSentence: _remoteIslSentence,
                                 ),
                               ),
                             ),
@@ -555,6 +700,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                           showRemotePlaceholder: true,
                           localCaption: _localGestureCaption,
                           remoteCaption: _remoteGestureCaption,
+                          islLocalSentence: _localIslSentence,
+                          islLocalLiveWord: _islLiveWord,
+                          islPartnerSentence: _remoteIslSentence,
                         ),
                       ),
                     ),
@@ -583,6 +731,8 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                     controller: _assistController,
                     captionsListening: _captionsListening,
                     islStatus: islStatus,
+                    islSentenceHint: _localIslSentence ?? _islComposer.displayText,
+                    remoteIslSentence: _remoteIslSentence,
                     onStartCaptions: () => unawaited(_startCaptions()),
                     onStopCaptions: () => unawaited(_stopCaptions()),
                     onSpeak: () => unawaited(_speakAssistText()),
@@ -707,6 +857,9 @@ class _CallVideoStack extends StatelessWidget {
     required this.showRemotePlaceholder,
     this.localCaption,
     this.remoteCaption,
+    this.islLocalSentence,
+    this.islLocalLiveWord,
+    this.islPartnerSentence,
   });
 
   final WebRtcCallService call;
@@ -714,6 +867,9 @@ class _CallVideoStack extends StatelessWidget {
   final bool showRemotePlaceholder;
   final String? localCaption;
   final String? remoteCaption;
+  final String? islLocalSentence;
+  final String? islLocalLiveWord;
+  final String? islPartnerSentence;
 
   @override
   Widget build(BuildContext context) {
@@ -740,12 +896,34 @@ class _CallVideoStack extends StatelessWidget {
                     )
                   : null),
         ),
-        if (remoteCaption != null)
+        if (islPartnerSentence != null && islPartnerSentence!.isNotEmpty)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _IslVideoSubtitleBar(
+              title: 'Partner',
+              liveWord: null,
+              sentence: islPartnerSentence!,
+            ),
+          )
+        else if (remoteCaption != null)
           Positioned(
             left: 8,
             right: 8,
             bottom: 8,
             child: _GestureCaptionChip(text: remoteCaption!, tone: _CaptionTone.remote),
+          ),
+        if (islLocalSentence != null && islLocalSentence!.isNotEmpty)
+          Positioned(
+            left: 0,
+            right: 96,
+            bottom: islPartnerSentence != null && islPartnerSentence!.isNotEmpty ? 52 : 0,
+            child: _IslVideoSubtitleBar(
+              title: 'You',
+              liveWord: islLocalLiveWord,
+              sentence: islLocalSentence!,
+            ),
           ),
         Positioned(
           right: 10,
@@ -797,6 +975,61 @@ class _CallVideoStack extends StatelessWidget {
 }
 
 enum _CaptionTone { local, remote }
+
+class _IslVideoSubtitleBar extends StatelessWidget {
+  const _IslVideoSubtitleBar({
+    required this.title,
+    required this.sentence,
+    this.liveWord,
+  });
+
+  final String title;
+  final String? liveWord;
+  final String sentence;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+          colors: [
+            Colors.black.withValues(alpha: 0.82),
+            Colors.black.withValues(alpha: 0.35),
+            Colors.transparent,
+          ],
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (liveWord != null && liveWord!.isNotEmpty)
+              Text(
+                '$title · signing: $liveWord',
+                style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500),
+              ),
+            Text(
+              sentence,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                height: 1.25,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _GestureCaptionChip extends StatelessWidget {
   const _GestureCaptionChip({
@@ -1223,6 +1456,8 @@ class _AssistancePanel extends StatelessWidget {
     required this.controller,
     required this.captionsListening,
     required this.islStatus,
+    required this.islSentenceHint,
+    required this.remoteIslSentence,
     required this.onStartCaptions,
     required this.onStopCaptions,
     required this.onSpeak,
@@ -1232,6 +1467,8 @@ class _AssistancePanel extends StatelessWidget {
   final TextEditingController controller;
   final bool captionsListening;
   final String islStatus;
+  final String islSentenceHint;
+  final String? remoteIslSentence;
   final VoidCallback onStartCaptions;
   final VoidCallback onStopCaptions;
   final VoidCallback onSpeak;
@@ -1251,6 +1488,10 @@ class _AssistancePanel extends StatelessWidget {
           children: [
             const Text('Assistance (optional)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
             Text('ISL: $islStatus', style: Theme.of(context).textTheme.bodySmall),
+            if (islSentenceHint.isNotEmpty)
+              Text('Your sentence: $islSentenceHint', style: Theme.of(context).textTheme.bodySmall),
+            if (remoteIslSentence != null && remoteIslSentence!.isNotEmpty)
+              Text('Partner: $remoteIslSentence', style: Theme.of(context).textTheme.bodySmall),
             const SizedBox(height: 6),
             TextField(
               controller: controller,
