@@ -63,7 +63,7 @@ function parseMessage(raw) {
   }
 }
 
-const ALLOWED_RELAY_TYPES = new Set(['offer', 'answer', 'candidate']);
+const ALLOWED_RELAY_TYPES = new Set(['offer', 'answer', 'candidate', 'gesture_caption']);
 
 function canRelay(msg) {
   return ALLOWED_RELAY_TYPES.has(msg.type);
