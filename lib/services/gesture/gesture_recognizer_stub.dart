@@ -21,6 +21,16 @@ class _GestureRecognizerStub implements GestureRecognizerService {
   GestureDetection? consumeLatest() => null;
 
   @override
+  GestureStartResult startRemoteOnVideoElementId(String videoElementId) =>
+      const GestureStartResult(ok: false, error: 'Not supported on this platform');
+
+  @override
+  void stopRemote() {}
+
+  @override
+  GestureDetection? consumeRemoteLatest() => null;
+
+  @override
   GestureRuntimeStatus get runtimeStatus =>
       const GestureRuntimeStatus(ready: false, running: false, error: 'Unsupported platform');
 }

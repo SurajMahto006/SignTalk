@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
@@ -9,6 +10,7 @@ import '../../services/speech/speech_transcript_controller.dart';
 import '../../services/speech/text_to_speech_service.dart';
 import '../../services/webrtc/call_media_state.dart';
 import '../../services/webrtc/webrtc_call_config.dart';
+import '../../services/gesture/gesture_demo_labels.dart';
 import '../../services/gesture/gesture_recognizer_service.dart';
 import '../../services/webrtc/webrtc_call_service.dart';
 import '../../theme/sign_talk_colors.dart';
@@ -37,8 +39,10 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   final List<StreamSubscription<dynamic>> _captionSubs = [];
   final _gestures = createGestureRecognizerService();
   Timer? _gesturePollTimer;
+  Timer? _remoteGesturePollTimer;
   StreamSubscription<GestureCaptionMessage>? _remoteGestureSub;
   bool _gesturePipelineActive = false;
+  bool _remoteGesturePipelineActive = false;
   String _gestureStatus = 'Gestures idle';
   String? _localGestureCaption;
   String? _remoteGestureCaption;
@@ -46,6 +50,13 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   DateTime? _lastSentAt;
   String? _lastSpokenRemoteLabel;
   DateTime? _lastSpokenRemoteAt;
+  bool _gestureReleaseArmed = true;
+  String? _latchedGestureId;
+  bool _remoteDetectReleaseArmed = true;
+  String? _remoteDetectLatchedId;
+  String? _lastRemoteDetectCaption;
+  DateTime? _lastRemoteDetectAt;
+  bool _gestureHelpExpanded = false;
 
   @override
   void initState() {
@@ -63,11 +74,18 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   }
 
   void _syncGesturePipelineWithCall() {
-    final shouldRun = _call.isActive && _call.hasLocalVideo;
-    if (shouldRun && !_gesturePipelineActive) {
+    final localShould = _call.isActive && _call.hasLocalVideo;
+    if (localShould && !_gesturePipelineActive) {
       unawaited(_startGesturePipeline());
-    } else if (!shouldRun && _gesturePipelineActive) {
-      _stopGesturePipeline();
+    } else if (!localShould && _gesturePipelineActive) {
+      _stopLocalGesturePipeline();
+    }
+
+    final remoteShould = _call.isActive && _call.hasRemoteVideo;
+    if (remoteShould && !_remoteGesturePipelineActive) {
+      unawaited(_startRemoteGesturePipeline());
+    } else if (!remoteShould && _remoteGesturePipelineActive) {
+      _stopRemoteGesturePipeline();
     }
   }
 
@@ -84,21 +102,37 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       setState(() => _gestureStatus = 'Gesture model failed: ${init.error ?? 'unknown'}');
       return;
     }
-    await Future<void>.delayed(const Duration(milliseconds: 600));
-    if (!mounted || !_call.isActive) return;
-    final videoId = webrtcLocalVideoElementId(_call.localRenderer);
-    final start = _gestures.startOnVideoElementId(videoId);
-    if (!start.ok) {
-      setState(() => _gestureStatus = 'Gesture camera hook failed: ${start.error ?? videoId}');
+    GestureStartResult? start;
+    String lastVideoId = '';
+    for (var attempt = 0; attempt < 24; attempt++) {
+      if (!mounted || !_call.isActive) return;
+      lastVideoId = webrtcLocalVideoElementId(_call.localRenderer);
+      start = _gestures.startOnVideoElementId(lastVideoId);
+      if (start.ok) break;
+      if (attempt == 0 || attempt % 4 == 0) {
+        setState(() => _gestureStatus = 'Waiting for your camera preview… (${attempt + 1}/24)');
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+    if (start == null || !start.ok) {
+      setState(
+        () => _gestureStatus =
+            'Gesture camera hook failed: ${start?.error ?? lastVideoId}. Retrying…',
+      );
+      Future<void>.delayed(const Duration(seconds: 2), () {
+        if (mounted && _call.isActive && _call.hasLocalVideo && !_gesturePipelineActive) {
+          unawaited(_startGesturePipeline());
+        }
+      });
       return;
     }
     _gesturePipelineActive = true;
     _gesturePollTimer?.cancel();
     _gesturePollTimer = Timer.periodic(const Duration(milliseconds: 150), (_) => _pollLocalGesture());
-    setState(() => _gestureStatus = 'Gesture recognition active (MediaPipe)');
+    setState(() => _gestureStatus = 'Detecting — show HELLO, YES, or STOP pose');
   }
 
-  void _stopGesturePipeline() {
+  void _stopLocalGesturePipeline() {
     _gesturePollTimer?.cancel();
     _gesturePollTimer = null;
     _gestures.stop();
@@ -111,46 +145,163 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     }
   }
 
+  void _stopRemoteGesturePipeline() {
+    _remoteGesturePollTimer?.cancel();
+    _remoteGesturePollTimer = null;
+    _gestures.stopRemote();
+    _remoteGesturePipelineActive = false;
+    if (mounted) {
+      setState(() => _remoteGestureCaption = null);
+    }
+  }
+
+  void _stopGesturePipeline() {
+    _stopLocalGesturePipeline();
+    _stopRemoteGesturePipeline();
+  }
+
+  Future<void> _startRemoteGesturePipeline() async {
+    if (_remoteGesturePipelineActive) return;
+    if (!_gestures.isSupported) return;
+    final init = await _gestures.init();
+    if (!mounted || !init.ready) return;
+
+    GestureStartResult? start;
+    var lastVideoId = '';
+    for (var attempt = 0; attempt < 24; attempt++) {
+      if (!mounted || !_call.isActive || !_call.hasRemoteVideo) return;
+      lastVideoId = webrtcLocalVideoElementId(_call.remoteRenderer);
+      start = _gestures.startRemoteOnVideoElementId(lastVideoId);
+      if (start.ok) break;
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+    if (start == null || !start.ok) {
+      Future<void>.delayed(const Duration(seconds: 2), () {
+        if (mounted && _call.isActive && _call.hasRemoteVideo && !_remoteGesturePipelineActive) {
+          unawaited(_startRemoteGesturePipeline());
+        }
+      });
+      return;
+    }
+    _remoteGesturePipelineActive = true;
+    _remoteGesturePollTimer?.cancel();
+    _remoteGesturePollTimer =
+        Timer.periodic(const Duration(milliseconds: 150), (_) => _pollRemoteVideoGesture());
+  }
+
+  void _pollRemoteVideoGesture() {
+    final det = _gestures.consumeRemoteLatest();
+    if (det == null) return;
+    if (det.status == 'tracking') {
+      _remoteDetectReleaseArmed = true;
+      _remoteDetectLatchedId = null;
+      return;
+    }
+    if (!det.isRecognized || det.gesture == null) return;
+
+    final caption = GestureDemoLabels.captionForMediaPipeGesture(det.gesture);
+    if (caption == null) return;
+    if (!_remoteDetectReleaseArmed && _remoteDetectLatchedId == det.gesture) return;
+
+    final now = DateTime.now();
+    if (_lastRemoteDetectCaption == caption &&
+        _lastRemoteDetectAt != null &&
+        now.difference(_lastRemoteDetectAt!) < const Duration(seconds: 2)) {
+      return;
+    }
+    _lastRemoteDetectCaption = caption;
+    _lastRemoteDetectAt = now;
+    _remoteDetectReleaseArmed = false;
+    _remoteDetectLatchedId = det.gesture;
+    unawaited(_applyPartnerCaption(caption));
+  }
+
   void _pollLocalGesture() {
     final det = _gestures.consumeLatest();
     if (det == null) return;
     if (det.status == 'error' && det.message != null) {
-      if (mounted) setState(() => _gestureStatus = 'Gesture error: ${det.message}');
+      if (mounted) setState(() => _gestureStatus = 'Error — ${det.message}');
       return;
     }
-    if (!det.isRecognized || det.gesture == null || det.label == null) return;
+    if (det.status == 'tracking') {
+      _gestureReleaseArmed = true;
+      _latchedGestureId = null;
+      if (mounted) {
+        setState(() => _gestureStatus = 'Detecting — open palm, thumb up, or closed fist');
+      }
+      return;
+    }
+    if (!det.isRecognized || det.gesture == null) return;
+
+    final caption = GestureDemoLabels.captionForMediaPipeGesture(det.gesture);
+    if (caption == null) {
+      if (mounted) {
+        setState(
+          () => _gestureStatus = 'Detecting — only HELLO / YES / STOP are sent in this demo',
+        );
+      }
+      return;
+    }
+
+    if (!_gestureReleaseArmed && _latchedGestureId == det.gesture) return;
+
     final now = DateTime.now();
     if (_lastSentGesture == det.gesture &&
         _lastSentAt != null &&
         now.difference(_lastSentAt!) < const Duration(seconds: 2)) {
       return;
     }
+
+    final sent = _call.sendGestureCaption(
+      gesture: det.gesture!,
+      label: caption,
+      score: det.score,
+    );
+    if (!sent) {
+      if (mounted) setState(() => _gestureStatus = 'Error — signaling not joined (caption not sent)');
+      return;
+    }
+
     _lastSentGesture = det.gesture;
     _lastSentAt = now;
-    _call.sendGestureCaption(gesture: det.gesture!, label: det.label!, score: det.score);
+    _gestureReleaseArmed = false;
+    _latchedGestureId = det.gesture;
     if (mounted) {
-      setState(() => _localGestureCaption = 'You: ${det.label}');
+      setState(() {
+        _localGestureCaption = caption;
+        _gestureStatus = 'Gesture recognized — $caption';
+      });
     }
   }
 
   Future<void> _onRemoteGestureCaption(GestureCaptionMessage msg) async {
+    final label = msg.label.trim();
+    if (label.isEmpty || !mounted) return;
+    await _applyPartnerCaption(label);
+  }
+
+  /// Partner caption on the main video + speak the word only (HELLO / YES / STOP).
+  Future<void> _applyPartnerCaption(String label) async {
     if (!mounted) return;
-    setState(() => _remoteGestureCaption = 'Them: ${msg.label}');
+    setState(() => _remoteGestureCaption = label);
     final now = DateTime.now();
-    if (_lastSpokenRemoteLabel == msg.label &&
+    if (_lastSpokenRemoteLabel == label &&
         _lastSpokenRemoteAt != null &&
         now.difference(_lastSpokenRemoteAt!) < const Duration(seconds: 4)) {
       return;
     }
-    _lastSpokenRemoteLabel = msg.label;
+    _lastSpokenRemoteLabel = label;
     _lastSpokenRemoteAt = now;
     final prefs = SignTalkScope.preferencesOf(context);
+    if (!prefs.spokenOutputEnabled) return;
+
     final tts = SignTalkScope.of(context).textToSpeech;
     await tts.setLanguage(prefs.speechLocale);
-    final spoken = 'Remote gesture: ${msg.label}';
-    final outcome = await tts.speak(spoken, enabled: prefs.spokenOutputEnabled);
-    if (outcome == SpeakOutcome.failed || outcome == SpeakOutcome.unavailable) {
-      _showSnack('Could not speak remote caption.');
+    // Do not call tts.stop() before caption speech — breaks Android speechSynthesis.
+
+    final outcome = await tts.speak(label, enabled: true);
+    if (outcome == SpeakOutcome.failed && kDebugMode) {
+      debugPrint('[SignTalk] Caption TTS failed for "$label" (caption still shown on screen).');
     }
   }
 
@@ -195,6 +346,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   Future<void> _checkMedia() async {
     if (_connecting) return;
+    SignTalkScope.of(context).textToSpeech.primeWebSpeechFromUserGesture();
     _connecting = true;
     setState(() {});
     await _releaseCameraPreviewForCall();
@@ -205,6 +357,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   Future<void> _hostCall() async {
     if (_connecting) return;
+    SignTalkScope.of(context).textToSpeech.primeWebSpeechFromUserGesture();
     _connecting = true;
     setState(() {});
     try {
@@ -224,6 +377,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   Future<void> _joinCall() async {
     if (_connecting) return;
+    SignTalkScope.of(context).textToSpeech.primeWebSpeechFromUserGesture();
     _connecting = true;
     setState(() {});
     try {
@@ -420,6 +574,10 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                   initiallyExpanded: _connectionDetailsExpanded,
                   onExpansionChanged: (v) => setState(() => _connectionDetailsExpanded = v),
                 ),
+                _GestureDemoHelpSection(
+                  initiallyExpanded: _gestureHelpExpanded,
+                  onExpansionChanged: (v) => setState(() => _gestureHelpExpanded = v),
+                ),
                 if (_assistExpanded)
                   _AssistancePanel(
                     controller: _assistController,
@@ -521,7 +679,19 @@ class _EssentialStatusLine extends StatelessWidget {
       return 'Connecting…';
     }
     if (call.mediaPathState == CallMediaPathState.connected && call.isActive) {
-      return 'Connected';
+      if (call.hasRemoteVideo || call.hasRemoteAudio) {
+        return 'Connected — remote media active';
+      }
+      if (call.signalingState == CallSignalingState.joined) {
+        return 'Signaling joined — waiting for remote camera/audio…';
+      }
+      return 'Waiting for remote media…';
+    }
+    if (call.signalingState == CallSignalingState.joined &&
+        !call.hasRemoteVideo &&
+        !call.hasRemoteAudio &&
+        call.isActive) {
+      return 'Signaling joined — waiting for WebRTC media…';
     }
     if (call.statusMessage != null && call.statusMessage!.isNotEmpty) {
       return call.statusMessage!;
@@ -751,6 +921,59 @@ class _ConnectionDetailsSection extends StatelessWidget {
           const Text(
             'Run the signaling server on your PC (port 8765). Use ws://127.0.0.1:8765 on this device or your LAN IP / wss:// when the app is served over HTTPS. Allow inbound TCP 8765 on Private networks in Windows Firewall if needed.',
             style: TextStyle(fontSize: 11, color: SignTalkColors.secondaryText, height: 1.35),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GestureDemoHelpSection extends StatelessWidget {
+  const _GestureDemoHelpSection({
+    required this.initiallyExpanded,
+    required this.onExpansionChanged,
+  });
+
+  final bool initiallyExpanded;
+  final ValueChanged<bool> onExpansionChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: SignTalkColors.card,
+      child: ExpansionTile(
+        initiallyExpanded: initiallyExpanded,
+        onExpansionChanged: onExpansionChanged,
+        tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        title: const Text(
+          'Demo gestures (prototype)',
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: SignTalkColors.primaryText),
+        ),
+        subtitle: Text(
+          GestureDemoLabels.prototypeDisclaimer,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        children: [
+          for (final g in GestureDemoLabels.demoGestures) ...[
+            Text(
+              g.caption,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: SignTalkColors.primaryText),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Text(g.poseHint, style: Theme.of(context).textTheme.bodySmall?.copyWith(height: 1.35)),
+            ),
+          ],
+          Text(
+            'Your signs appear on your preview and are sent to your partner. Their signs show on your main video '
+            '(and vice versa). Spoken output says the word only: HELLO, YES, or STOP.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 11, height: 1.35),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'After each caption, lower your hand briefly before repeating the same gesture.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 11, height: 1.35),
           ),
         ],
       ),

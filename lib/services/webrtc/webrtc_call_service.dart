@@ -602,12 +602,13 @@ class WebRtcCallService extends ChangeNotifier {
     }
   }
 
-  void sendGestureCaption({
+  /// Returns false if signaling is not joined (caption was not sent).
+  bool sendGestureCaption({
     required String gesture,
     required String label,
     required double score,
   }) {
-    if (!_signalingJoined || _participantId == null) return;
+    if (!_signalingJoined || _participantId == null) return false;
     _send({
       'type': 'gesture_caption',
       'from': _participantId,
@@ -615,6 +616,7 @@ class WebRtcCallService extends ChangeNotifier {
       'label': label,
       'score': score,
     });
+    return true;
   }
 
   void _handleGestureCaption(Map<String, dynamic> msg) {

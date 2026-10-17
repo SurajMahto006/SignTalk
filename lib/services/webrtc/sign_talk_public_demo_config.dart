@@ -4,10 +4,10 @@
 /// `--dart-define=SIGNALING_URL=wss://…` when starting Flutter).
 abstract final class SignTalkPublicDemoConfig {
   /// Public HTTPS app host (no scheme), from the app Cloudflare tunnel.
-  static const cloudflareAppHost = 'informed-surge-travelling-lighting.trycloudflare.com';
+  static const cloudflareAppHost = 'highway-advisor-starts-provinces.trycloudflare.com';
 
   /// Public signaling WebSocket URL (WSS), from the signaling Cloudflare tunnel.
-  static const cloudflareSignalingWss = 'wss://angeles-sunny-ice-anybody.trycloudflare.com';
+  static const cloudflareSignalingWss = 'wss://dear-tariff-tulsa-midi.trycloudflare.com';
 
   /// Returns [cloudflareSignalingWss] when the page is served from [cloudflareAppHost].
   static String? signalingWssForPageHost(String host) {

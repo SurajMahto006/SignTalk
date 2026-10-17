@@ -15,6 +15,13 @@ abstract class GestureRecognizerService {
 
   GestureDetection? consumeLatest();
 
+  /// Partner’s main video on this device (display + TTS; does not send signaling).
+  GestureStartResult startRemoteOnVideoElementId(String videoElementId);
+
+  void stopRemote();
+
+  GestureDetection? consumeRemoteLatest();
+
   GestureRuntimeStatus get runtimeStatus;
 }
 

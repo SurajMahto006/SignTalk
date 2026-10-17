@@ -14,6 +14,9 @@ extension type _SignTalkGestureJs._(JSObject _) implements JSObject {
   external JSObject start(String videoElementId);
   external void stop();
   external JSObject consume();
+  external JSObject startRemote(String videoElementId);
+  external void stopRemote();
+  external JSObject consumeRemote();
   external JSObject status();
 }
 
@@ -70,6 +73,47 @@ class _GestureRecognizerWeb implements GestureRecognizerService {
   @override
   void stop() {
     _api?.stop();
+  }
+
+  @override
+  GestureStartResult startRemoteOnVideoElementId(String videoElementId) {
+    final api = _api;
+    if (api == null) {
+      return const GestureStartResult(ok: false, error: 'SignTalkGesture not available');
+    }
+    try {
+      final map = _jsObjectToMap(api.startRemote(videoElementId));
+      return GestureStartResult(
+        ok: map['ok'] == true,
+        error: map['error']?.toString(),
+      );
+    } catch (e) {
+      return GestureStartResult(ok: false, error: e.toString());
+    }
+  }
+
+  @override
+  void stopRemote() {
+    _api?.stopRemote();
+  }
+
+  @override
+  GestureDetection? consumeRemoteLatest() {
+    final api = _api;
+    if (api == null) return null;
+    try {
+      final map = _jsObjectToMap(api.consumeRemote());
+      if (map.isEmpty || map['status'] == 'idle') return null;
+      return GestureDetection(
+        status: map['status']?.toString() ?? 'unknown',
+        gesture: map['gesture']?.toString(),
+        label: map['label']?.toString(),
+        score: (map['score'] as num?)?.toDouble() ?? 0,
+        message: map['message']?.toString(),
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   @override
