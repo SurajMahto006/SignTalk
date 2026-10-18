@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
+import 'sign_talk_scope.dart';
 import '../screens/conversations/conversations_screen.dart';
 import '../screens/conversations/video_call_screen.dart';
 import '../screens/home/home_screen.dart';
 import '../screens/logs/logs_screen.dart';
 import '../screens/settings/settings_screen.dart';
+import '../screens/translate/sign_to_text_screen.dart';
+import '../screens/translate/speech_to_text_screen.dart';
 import '../services/permissions/device_permission_status.dart';
 import '../theme/sign_talk_colors.dart';
 
@@ -20,6 +23,7 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _selectedIndex = 0;
   bool _videoCallOpen = false;
+  String? _activeTool;
   int _conversationsSession = 0;
   String _contactName = 'Demo contact';
 
@@ -48,6 +52,19 @@ class _MainShellState extends State<MainShell> {
                             onClose: () =>
                                 setState(() => _videoCallOpen = false),
                           )
+                        : _activeTool == 'sign'
+                        ? SignToTextScreen(
+                            onBack: _closeTool,
+                            onOpenSettings: _openSettings,
+                            onSendToConversations: _sendSignTextToConversation,
+                          )
+                        : _activeTool == 'speech'
+                        ? SpeechToTextScreen(
+                            onBack: _closeTool,
+                            onOpenSettings: _openSettings,
+                            onSendToConversations:
+                                _sendSpeechTextToConversation,
+                          )
                         : _buildTabBody(),
                   ),
                   if (!_videoCallOpen)
@@ -66,19 +83,54 @@ class _MainShellState extends State<MainShell> {
 
   void _onTabSelected(int index) {
     setState(() {
+      _activeTool = null;
       _selectedIndex = index;
     });
   }
 
-  void _openConversation() => setState(() => _selectedIndex = 2);
+  void _goHome() => setState(() {
+    _activeTool = null;
+    _selectedIndex = 0;
+  });
 
-  void _goHome() => setState(() => _selectedIndex = 0);
+  void _openConversations() => setState(() {
+    _activeTool = null;
+    _selectedIndex = 2;
+  });
 
-  void _openConversations() => setState(() => _selectedIndex = 2);
+  void _openSettings() => setState(() {
+    _activeTool = null;
+    _selectedIndex = 3;
+  });
 
-  void _openSettings() => setState(() => _selectedIndex = 3);
+  void _openSignToText() => setState(() => _activeTool = 'sign');
+
+  void _openSpeechToText() => setState(() => _activeTool = 'speech');
+
+  void _closeTool() => setState(() => _activeTool = null);
+
+  void _sendSignTextToConversation(
+    String text, {
+    bool asRecognizedSign = false,
+  }) {
+    SignTalkScope.of(context).conversationDraft
+        .stage(text, asRecognizedSign: asRecognizedSign);
+    setState(() {
+      _activeTool = null;
+      _selectedIndex = 2;
+    });
+  }
+
+  void _sendSpeechTextToConversation(String text) {
+    SignTalkScope.of(context).conversationDraft.stage(text, asSpoken: true);
+    setState(() {
+      _activeTool = null;
+      _selectedIndex = 2;
+    });
+  }
 
   void _openVideoCall() => setState(() {
+    _activeTool = null;
     _selectedIndex = 2;
     _videoCallOpen = true;
   });
@@ -94,8 +146,8 @@ class _MainShellState extends State<MainShell> {
   Widget _buildTabBody() {
     return switch (_selectedIndex) {
       0 => HomeScreen(
-        onSignToTextTap: _openConversation,
-        onSpeechToTextTap: _openConversation,
+        onSignToTextTap: _openSignToText,
+        onSpeechToTextTap: _openSpeechToText,
         onOpenConversations: _openConversations,
         onOpenLogs: () => _onTabSelected(1),
         onProfileTap: _openSettings,

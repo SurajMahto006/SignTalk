@@ -40,7 +40,7 @@ class HomeScreen extends StatelessWidget {
             _SectionHeading(
               title: 'Choose a Tool',
               actionLabel: 'See all',
-              onAction: onOpenConversations,
+              onAction: onSignToTextTap,
             ),
             const SizedBox(height: 12),
             if (wide)
@@ -102,7 +102,7 @@ class HomeScreen extends StatelessWidget {
               wide: wide,
               onContacts: onOpenConversations,
               onHistory: onOpenLogs ?? onOpenConversations,
-              onLearn: () => _showLearnNotice(context),
+              onLearn: onSignToTextTap,
               onSettings: onProfileTap ?? onOpenConversations,
             ),
           ],
@@ -115,15 +115,6 @@ class HomeScreen extends StatelessWidget {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('You are all caught up.'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  void _showLearnNotice(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('ISL learning lessons are coming soon.'),
         behavior: SnackBarBehavior.floating,
       ),
     );

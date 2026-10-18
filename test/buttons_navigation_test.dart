@@ -62,10 +62,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Start a Conversation'), findsOneWidget);
 
-      // 6. Sign and speech actions now open the Conversations page.
+      // 6. Sign and speech actions open their dedicated working tools.
       await tester.tap(find.text('Sign to Text').first);
       await tester.pumpAndSettle();
-      expect(find.text('Demo contact'), findsOneWidget);
+      expect(find.text('Sign to Text'), findsOneWidget);
 
       // 7. Verify the four primary tabs.
       await tester.tap(find.text('Logs'));
