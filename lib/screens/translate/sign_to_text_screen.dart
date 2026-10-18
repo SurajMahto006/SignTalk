@@ -13,10 +13,12 @@ class SignToTextScreen extends StatefulWidget {
     super.key,
     required this.onBack,
     required this.onSendToConversations,
+    this.onOpenSettings,
   });
 
   final VoidCallback onBack;
   final void Function(String text, {bool asRecognizedSign}) onSendToConversations;
+  final VoidCallback? onOpenSettings;
 
   @override
   State<SignToTextScreen> createState() => _SignToTextScreenState();
@@ -119,14 +121,16 @@ class _SignToTextScreenState extends State<SignToTextScreen> {
   }
 
   void _togglePause() {
+    if (!_cameraActive) {
+      _showSnack('Start the camera preview first to pause or resume.');
+      return;
+    }
     final camera = SignTalkScope.of(context).cameraPreview;
     setState(() => _isPaused = !_isPaused);
-    if (_cameraActive) {
-      if (_isPaused) {
-        camera.pausePreview();
-      } else {
-        camera.resumePreview();
-      }
+    if (_isPaused) {
+      camera.pausePreview();
+    } else {
+      camera.resumePreview();
     }
   }
 
@@ -220,7 +224,7 @@ class _SignToTextScreenState extends State<SignToTextScreen> {
       children: [
         _ScreenHeader(
           onBack: widget.onBack,
-          onSettings: () => _showSnack('Sign to Text settings are not available yet.'),
+          onSettings: widget.onOpenSettings ?? () => _showSnack('Sign to Text settings are not available yet.'),
         ),
         const SizedBox(height: 8),
         _InfoPill(status: islAdapter.displayName),

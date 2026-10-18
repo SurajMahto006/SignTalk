@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../app/sign_talk_scope.dart';
 import '../../theme/sign_talk_colors.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -8,11 +9,13 @@ class HomeScreen extends StatelessWidget {
     required this.onSignToTextTap,
     required this.onSpeechToTextTap,
     required this.onOpenConversations,
+    this.onProfileTap,
   });
 
   final VoidCallback onSignToTextTap;
   final VoidCallback onSpeechToTextTap;
   final VoidCallback onOpenConversations;
+  final VoidCallback? onProfileTap;
 
   void _showComingSoon(BuildContext context, String feature) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -29,7 +32,7 @@ class HomeScreen extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.only(bottom: 8),
       children: [
-        _HomeHeader(onProfileTap: () => _showComingSoon(context, 'Profile')),
+        _HomeHeader(onProfileTap: onProfileTap ?? () => _showComingSoon(context, 'Profile')),
         const SizedBox(height: 4),
         const _HeroSection(),
         const SizedBox(height: 4),
@@ -72,6 +75,13 @@ class _HomeHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final user = SignTalkScope.authOf(context).currentUser;
+    final initials = user != null && user.name.isNotEmpty
+        ? (user.name.trim().split(RegExp(r'\s+')).length >= 2
+            ? '${user.name.trim().split(RegExp(r'\s+'))[0][0]}${user.name.trim().split(RegExp(r'\s+'))[1][0]}'
+            : user.name.substring(0, user.name.length >= 2 ? 2 : 1))
+        : null;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
       child: Row(
@@ -117,10 +127,21 @@ class _HomeHeader extends StatelessWidget {
             child: InkWell(
               onTap: onProfileTap,
               customBorder: const CircleBorder(),
-              child: const SizedBox(
+              child: SizedBox(
                 width: 36,
                 height: 36,
-                child: Icon(Icons.person_outline, size: 22, color: SignTalkColors.primaryText),
+                child: initials != null
+                    ? Center(
+                        child: Text(
+                          initials.toUpperCase(),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: SignTalkColors.primaryBlue,
+                          ),
+                        ),
+                      )
+                    : const Icon(Icons.person_outline, size: 22, color: SignTalkColors.primaryText),
               ),
             ),
           ),
@@ -135,11 +156,32 @@ class _HeroSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final user = SignTalkScope.authOf(context).currentUser;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (user != null) ...[
+            Container(
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: SignTalkColors.tintBlue,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: SignTalkColors.tintBlueBorder),
+              ),
+              child: Text(
+                'Welcome, ${user.name} (@${user.userId})',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: SignTalkColors.primaryBlue,
+                ),
+              ),
+            ),
+          ],
           Text(
             'Communication,\nwithout barriers.',
             style: Theme.of(context).textTheme.headlineMedium,

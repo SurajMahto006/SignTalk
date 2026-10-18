@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/sign_talk_scope.dart';
+import '../../services/auth/auth_user.dart';
 import '../../services/permissions/device_permission_status.dart';
 import '../../theme/sign_talk_colors.dart';
 
@@ -12,9 +13,11 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final prefs = SignTalkScope.preferencesOf(context);
+    final auth = SignTalkScope.authOf(context);
+    final user = auth.currentUser;
 
     return ListenableBuilder(
-      listenable: Listenable.merge([prefs, permissionStatus]),
+      listenable: Listenable.merge([prefs, permissionStatus, auth]),
       builder: (context, _) {
         return ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
@@ -34,7 +37,10 @@ class SettingsScreen extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 12),
-            _ProfileCard(onTap: () => _showInfo(context, 'Demo profile', 'This is placeholder profile data for the SignTalk UI prototype.')),
+            _ProfileCard(
+              user: user,
+              onTap: () => _showProfileDialog(context, user),
+            ),
             const SizedBox(height: 14),
             _SettingsGroup(
               title: 'Accessibility',
@@ -139,7 +145,7 @@ class SettingsScreen extends StatelessWidget {
                   onTap: () => _showInfo(
                     context,
                     'Privacy Policy',
-                    'SignTalk saves only UI preferences in local browser storage. Conversation messages and captions stay in memory until you refresh. No cloud sync or encryption is implemented.',
+                    'SignTalk saves your unique User ID and UI preferences locally in browser storage. Conversation messages and captions stay in memory until you refresh.',
                   ),
                 ),
                 _ChevronRow(
@@ -148,7 +154,7 @@ class SettingsScreen extends StatelessWidget {
                   onTap: () => _showInfo(
                     context,
                     'Help & Support',
-                    'For accessibility questions or bug reports, contact your project team. In-app support channels are not wired up yet.',
+                    'For accessibility questions, unique ID inquiries, or bug reports, contact your project team.',
                   ),
                 ),
                 _ChevronRow(
@@ -160,6 +166,28 @@ class SettingsScreen extends StatelessWidget {
                     'About SignTalk',
                     'SignTalk web app — ISL-assisted communication UI with real browser speech and camera where supported. Sign recognition remains future work.',
                   ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            _SettingsGroup(
+              title: 'Account & Session',
+              icon: Icons.manage_accounts_outlined,
+              children: [
+                _ChevronRow(
+                  icon: Icons.alternate_email,
+                  label: 'Unique User ID',
+                  value: user != null ? '@${user.userId}' : '@demo_user',
+                  onTap: () => _showProfileDialog(context, user),
+                ),
+                _ChevronRow(
+                  icon: Icons.badge_outlined,
+                  label: 'Community Role',
+                  value: user?.role ?? 'ISL Signer',
+                  onTap: () => _showProfileDialog(context, user),
+                ),
+                _LogoutRow(
+                  onTap: () => _confirmLogout(context),
                 ),
               ],
             ),
@@ -213,15 +241,150 @@ class SettingsScreen extends StatelessWidget {
       ),
     );
   }
+
+  void _showProfileDialog(BuildContext context, AuthUser? user) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: const BoxDecoration(
+                color: SignTalkColors.primaryBlue,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                _getInitials(user?.name ?? 'Demo User'),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Text('User Profile'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _ProfileDetailItem(label: 'Full Name', value: user?.name ?? 'Demo User'),
+            const SizedBox(height: 10),
+            _ProfileDetailItem(label: 'Unique User ID', value: '@${user?.userId ?? 'demo_user'}'),
+            const SizedBox(height: 10),
+            _ProfileDetailItem(label: 'Role', value: user?.role ?? 'ISL Communicator'),
+            if (user?.email != null && user!.email.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              _ProfileDetailItem(label: 'Email', value: user.email),
+            ],
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: SignTalkColors.tintBlue,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: SignTalkColors.tintBlueBorder),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.verified, size: 16, color: SignTalkColors.primaryBlue),
+                  SizedBox(width: 6),
+                  Text(
+                    'Verified Unique ID Account',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: SignTalkColors.primaryBlue),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmLogout(BuildContext context) async {
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Log Out'),
+        content: const Text(
+          'Are you sure you want to log out of SignTalk? You will need your User ID and password to sign back in.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: SignTalkColors.callRed),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Log Out'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLogout == true && context.mounted) {
+      await SignTalkScope.authOf(context).logout();
+    }
+  }
+
+  static String _getInitials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.length >= 2) {
+      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    } else if (parts.isNotEmpty && parts[0].isNotEmpty) {
+      return parts[0].substring(0, parts[0].length >= 2 ? 2 : 1).toUpperCase();
+    }
+    return 'ST';
+  }
+}
+
+class _ProfileDetailItem extends StatelessWidget {
+  const _ProfileDetailItem({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: SignTalkColors.secondaryText),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: SignTalkColors.primaryText),
+        ),
+      ],
+    );
+  }
 }
 
 class _ProfileCard extends StatelessWidget {
-  const _ProfileCard({required this.onTap});
+  const _ProfileCard({required this.user, required this.onTap});
 
+  final AuthUser? user;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final displayName = user?.name ?? 'Demo User';
+    final userHandle = '@${user?.userId ?? 'demo_user'}';
+    final role = user?.role ?? 'ISL Communicator';
+    final initials = SettingsScreen._getInitials(displayName);
+
     return Material(
       color: SignTalkColors.card,
       borderRadius: BorderRadius.circular(16),
@@ -239,20 +402,29 @@ class _ProfileCard extends StatelessWidget {
             child: Row(
               children: [
                 Container(
-                  width: 40,
-                  height: 40,
+                  width: 44,
+                  height: 44,
                   decoration: const BoxDecoration(color: SignTalkColors.primaryBlue, shape: BoxShape.circle),
                   alignment: Alignment.center,
-                  child: const Text('DU', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
+                  child: Text(
+                    initials,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14),
+                  ),
                 ),
                 const SizedBox(width: 12),
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Demo User', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: SignTalkColors.primaryText)),
-                      SizedBox(height: 2),
-                      Text('SignTalk User (demo)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: SignTalkColors.secondaryText)),
+                      Text(
+                        displayName,
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: SignTalkColors.primaryText),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '$userHandle · $role',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: SignTalkColors.secondaryText),
+                      ),
                     ],
                   ),
                 ),
@@ -323,8 +495,25 @@ class _ChevronRow extends StatelessWidget {
         children: [
           Icon(icon, size: 18, color: SignTalkColors.secondaryText),
           const SizedBox(width: 10),
-          Expanded(child: Text(label, style: const TextStyle(fontSize: 13.5, color: SignTalkColors.primaryText))),
-          if (value != null) Text(value!, style: const TextStyle(fontSize: 13, color: Color(0xFF8E8E93))),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13.5, color: SignTalkColors.primaryText),
+            ),
+          ),
+          if (value != null) ...[
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                value!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 13, color: Color(0xFF8E8E93)),
+              ),
+            ),
+          ],
           const SizedBox(width: 4),
           const Icon(Icons.chevron_right, size: 16, color: Color(0xFFC7C7CC)),
         ],
@@ -356,8 +545,23 @@ class _StatusRow extends StatelessWidget {
         children: [
           Icon(icon, size: 18, color: SignTalkColors.secondaryText),
           const SizedBox(width: 10),
-          Expanded(child: Text(label, style: const TextStyle(fontSize: 13.5, color: SignTalkColors.primaryText))),
-          Text(status, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: statusColor)),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13.5, color: SignTalkColors.primaryText),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              status,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: statusColor),
+            ),
+          ),
           const SizedBox(width: 4),
           const Icon(Icons.chevron_right, size: 16, color: Color(0xFFC7C7CC)),
         ],
@@ -393,6 +597,32 @@ class _SwitchRow extends StatelessWidget {
             activeThumbColor: SignTalkColors.primaryBlue,
             onChanged: onChanged,
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LogoutRow extends StatelessWidget {
+  const _LogoutRow({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SettingsRowShell(
+      onTap: onTap,
+      child: const Row(
+        children: [
+          Icon(Icons.logout, size: 18, color: SignTalkColors.callRed),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Log Out of SignTalk',
+              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: SignTalkColors.callRed),
+            ),
+          ),
+          Icon(Icons.chevron_right, size: 16, color: SignTalkColors.callRed),
         ],
       ),
     );

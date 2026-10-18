@@ -1,16 +1,12 @@
 import 'package:flutter/material.dart';
 
-import '../app/sign_talk_scope.dart';
 import '../screens/conversations/conversations_screen.dart';
 import '../screens/conversations/video_call_screen.dart';
 import '../screens/home/home_screen.dart';
+import '../screens/logs/logs_screen.dart';
 import '../screens/settings/settings_screen.dart';
-import '../screens/translate/sign_to_text_screen.dart';
-import '../screens/translate/speech_to_text_screen.dart';
 import '../services/permissions/device_permission_status.dart';
 import '../theme/sign_talk_colors.dart';
-
-enum _TranslateScreen { signToText, speechToText }
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key, required this.permissionStatus});
@@ -23,25 +19,30 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _selectedIndex = 0;
-  _TranslateScreen _translateScreen = _TranslateScreen.signToText;
   bool _videoCallOpen = false;
   int _conversationsSession = 0;
+  String _contactName = 'Demo contact';
 
-  static const _tabLabels = ['Home', 'Translate', 'Conversations', 'Settings'];
+  static const _tabLabels = ['Home', 'Logs', 'Conversations', 'Settings'];
 
   @override
   Widget build(BuildContext context) {
+    final viewportWidth = MediaQuery.sizeOf(context).width;
+    final appWidth = viewportWidth < 390 ? viewportWidth : 390.0;
     return Scaffold(
       backgroundColor: SignTalkColors.background,
       body: SafeArea(
         child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 390),
+          child: SizedBox(
+            width: appWidth,
             child: Column(
               children: [
                 Expanded(
                   child: _videoCallOpen
-                      ? VideoCallScreen(onClose: () => setState(() => _videoCallOpen = false))
+                      ? VideoCallScreen(
+                          contactName: _contactName,
+                          onClose: () => setState(() => _videoCallOpen = false),
+                        )
                       : _buildTabBody(),
                 ),
                 if (!_videoCallOpen)
@@ -59,47 +60,26 @@ class _MainShellState extends State<MainShell> {
 
   void _onTabSelected(int index) {
     setState(() {
-      if (index == 1 && _selectedIndex != 1) {
-        _translateScreen = _TranslateScreen.signToText;
-      }
       _selectedIndex = index;
     });
   }
 
-  void _openSignToText() {
-    setState(() {
-      _selectedIndex = 1;
-      _translateScreen = _TranslateScreen.signToText;
-    });
-  }
-
-  void _openSpeechToText() {
-    setState(() {
-      _selectedIndex = 1;
-      _translateScreen = _TranslateScreen.speechToText;
-    });
-  }
+  void _openConversation() => setState(() => _selectedIndex = 2);
 
   void _goHome() => setState(() => _selectedIndex = 0);
 
   void _openConversations() => setState(() => _selectedIndex = 2);
 
-  void _openVideoCall() => setState(() {
-        _selectedIndex = 2;
-        _videoCallOpen = true;
-      });
+  void _openSettings() => setState(() => _selectedIndex = 3);
 
-  void _sendTextToConversations(
-    String text, {
-    bool asSpoken = false,
-    bool asRecognizedSign = false,
-  }) {
-    SignTalkScope.of(context).conversationDraft.stage(
-          text,
-          asSpoken: asSpoken,
-          asRecognizedSign: asRecognizedSign,
-        );
+  void _openVideoCall() => setState(() {
+    _selectedIndex = 2;
+    _videoCallOpen = true;
+  });
+
+  void _openContactConversation(String contactName) {
     setState(() {
+      _contactName = contactName;
       _selectedIndex = 2;
       _conversationsSession++;
     });
@@ -108,120 +88,21 @@ class _MainShellState extends State<MainShell> {
   Widget _buildTabBody() {
     return switch (_selectedIndex) {
       0 => HomeScreen(
-          onSignToTextTap: _openSignToText,
-          onSpeechToTextTap: _openSpeechToText,
-          onOpenConversations: _openConversations,
-        ),
-      1 => Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _TranslateModeBar(
-              signSelected: _translateScreen == _TranslateScreen.signToText,
-              onSign: () => setState(() => _translateScreen = _TranslateScreen.signToText),
-              onSpeech: () => setState(() => _translateScreen = _TranslateScreen.speechToText),
-            ),
-            Expanded(
-              child: switch (_translateScreen) {
-                _TranslateScreen.signToText => SignToTextScreen(
-                    onBack: _goHome,
-                    onSendToConversations: (text, {asRecognizedSign = false}) =>
-                        _sendTextToConversations(text, asRecognizedSign: asRecognizedSign),
-                  ),
-                _TranslateScreen.speechToText => SpeechToTextScreen(
-                    onBack: _goHome,
-                    onSendToConversations: (text) => _sendTextToConversations(text, asSpoken: true),
-                  ),
-              },
-            ),
-          ],
-        ),
+        onSignToTextTap: _openConversation,
+        onSpeechToTextTap: _openConversation,
+        onOpenConversations: _openConversations,
+        onProfileTap: _openSettings,
+      ),
+      1 => LogsScreen(onOpenConversation: _openContactConversation),
       2 => ConversationsScreen(
-          key: ValueKey(_conversationsSession),
-          onOpenVideoCall: _openVideoCall,
-        ),
+        key: ValueKey(_conversationsSession),
+        contactName: _contactName,
+        onOpenVideoCall: _openVideoCall,
+        onBack: _goHome,
+      ),
       3 => SettingsScreen(permissionStatus: widget.permissionStatus),
       _ => _TabPlaceholder(title: _tabLabels[_selectedIndex]),
     };
-  }
-}
-
-class _TranslateModeBar extends StatelessWidget {
-  const _TranslateModeBar({
-    required this.signSelected,
-    required this.onSign,
-    required this.onSpeech,
-  });
-
-  final bool signSelected;
-  final VoidCallback onSign;
-  final VoidCallback onSpeech;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: SignTalkColors.dividerLight,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: SignTalkColors.border),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(4),
-          child: Row(
-            children: [
-              Expanded(
-                child: _SegmentChip(
-                  label: 'Sign to Text',
-                  selected: signSelected,
-                  onTap: onSign,
-                ),
-              ),
-              Expanded(
-                child: _SegmentChip(
-                  label: 'Speech to Text',
-                  selected: !signSelected,
-                  onTap: onSpeech,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SegmentChip extends StatelessWidget {
-  const _SegmentChip({required this.label, required this.selected, required this.onTap});
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: selected ? SignTalkColors.card : Colors.transparent,
-      borderRadius: BorderRadius.circular(10),
-      elevation: selected ? 0.5 : 0,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-              color: selected ? SignTalkColors.primaryText : SignTalkColors.secondaryText,
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
 
@@ -245,7 +126,8 @@ class _TabPlaceholder extends StatelessWidget {
           const SizedBox(height: 16),
           Text(
             title,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontSize: 20),
+            style: Theme.of(context).textTheme.titleMedium
+                ?.copyWith(fontSize: 20),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 8),
@@ -290,9 +172,9 @@ class _SignTalkBottomNav extends StatelessWidget {
               onTap: () => onSelected(0),
             ),
             _NavItem(
-              label: 'Translate',
-              icon: Icons.translate_outlined,
-              selectedIcon: Icons.translate,
+              label: 'Logs',
+              icon: Icons.history_outlined,
+              selectedIcon: Icons.history,
               selected: selectedIndex == 1,
               onTap: () => onSelected(1),
             ),
@@ -336,7 +218,9 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? SignTalkColors.primaryBlue : SignTalkColors.secondaryText;
+    final color = selected
+        ? SignTalkColors.primaryBlue
+        : SignTalkColors.secondaryText;
     final iconData = selected ? selectedIcon : icon;
 
     return Material(
