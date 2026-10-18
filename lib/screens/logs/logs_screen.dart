@@ -113,12 +113,13 @@ class _ContactCard extends StatelessWidget {
     final chatCount = entries
         .where((entry) => entry.type == ActivityLogType.chat)
         .length;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: SignTalkColors.card,
+    return Material(
+      color: SignTalkColors.card,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: SignTalkColors.border),
+        side: const BorderSide(color: SignTalkColors.border),
       ),
+      clipBehavior: Clip.antiAlias,
       child: ListTile(
         onTap: onTap,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),

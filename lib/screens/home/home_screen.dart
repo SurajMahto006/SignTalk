@@ -30,9 +30,12 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 24),
       children: [
-        _HomeHeader(onProfileTap: onProfileTap ?? () => _showComingSoon(context, 'Profile')),
+        _HomeHeader(
+          onProfileTap:
+              onProfileTap ?? () => _showComingSoon(context, 'Profile'),
+        ),
         const SizedBox(height: 4),
         const _HeroSection(),
         const SizedBox(height: 4),
@@ -78,8 +81,8 @@ class _HomeHeader extends StatelessWidget {
     final user = SignTalkScope.authOf(context).currentUser;
     final initials = user != null && user.name.isNotEmpty
         ? (user.name.trim().split(RegExp(r'\s+')).length >= 2
-            ? '${user.name.trim().split(RegExp(r'\s+'))[0][0]}${user.name.trim().split(RegExp(r'\s+'))[1][0]}'
-            : user.name.substring(0, user.name.length >= 2 ? 2 : 1))
+              ? '${user.name.trim().split(RegExp(r'\s+'))[0][0]}${user.name.trim().split(RegExp(r'\s+'))[1][0]}'
+              : user.name.substring(0, user.name.length >= 2 ? 2 : 1))
         : null;
 
     return Padding(
@@ -102,7 +105,11 @@ class _HomeHeader extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: const Icon(Icons.back_hand_outlined, color: Colors.white, size: 18),
+                child: const Icon(
+                  Icons.back_hand_outlined,
+                  color: Colors.white,
+                  size: 18,
+                ),
               ),
               const SizedBox(width: 8),
               const Text(
@@ -119,9 +126,7 @@ class _HomeHeader extends StatelessWidget {
           const Spacer(),
           Material(
             color: SignTalkColors.card,
-            shape: CircleBorder(
-              side: BorderSide(color: SignTalkColors.border),
-            ),
+            shape: CircleBorder(side: BorderSide(color: SignTalkColors.border)),
             elevation: 0,
             shadowColor: Colors.black.withValues(alpha: 0.06),
             child: InkWell(
@@ -141,7 +146,11 @@ class _HomeHeader extends StatelessWidget {
                           ),
                         ),
                       )
-                    : const Icon(Icons.person_outline, size: 22, color: SignTalkColors.primaryText),
+                    : const Icon(
+                        Icons.person_outline,
+                        size: 22,
+                        color: SignTalkColors.primaryText,
+                      ),
               ),
             ),
           ),
@@ -159,39 +168,66 @@ class _HeroSection extends StatelessWidget {
     final user = SignTalkScope.authOf(context).currentUser;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (user != null) ...[
-            Container(
-              margin: const EdgeInsets.only(bottom: 6),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: SignTalkColors.tintBlue,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: SignTalkColors.tintBlueBorder),
-              ),
-              child: Text(
-                'Welcome, ${user.name} (@${user.userId})',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: SignTalkColors.primaryBlue,
-                ),
-              ),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF1D4ED8), Color(0xFF2563EB)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x202563EB),
+              blurRadius: 20,
+              offset: Offset(0, 10),
             ),
           ],
-          Text(
-            'Communication,\nwithout barriers.',
-            style: Theme.of(context).textTheme.headlineMedium,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (user != null) ...[
+                Container(
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: SignTalkColors.tintBlue,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: SignTalkColors.tintBlueBorder),
+                  ),
+                  child: Text(
+                    'Welcome back, ${user.name}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+              Text(
+                'Communication,\nwithout barriers.',
+                style: Theme.of(context).textTheme.headlineMedium
+                    ?.copyWith(color: Colors.white, fontSize: 27),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Choose the right way to connect today.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.white.withValues(alpha: 0.82),
+                  fontSize: 14,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            "Choose how you'd like to connect today.",
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 14),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -230,7 +266,7 @@ class _ActionCard extends StatelessWidget {
             border: Border.all(color: SignTalkColors.border),
           ),
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(18),
             child: Row(
               children: [
                 Expanded(
@@ -258,16 +294,26 @@ class _ActionCard extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(title, style: Theme.of(context).textTheme.titleMedium),
+                            Text(
+                              title,
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
                             const SizedBox(height: 2),
-                            Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+                            Text(
+                              subtitle,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
                           ],
                         ),
                       ),
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right, color: SignTalkColors.chevron, size: 22),
+                const Icon(
+                  Icons.chevron_right,
+                  color: SignTalkColors.chevron,
+                  size: 22,
+                ),
               ],
             ),
           ),
@@ -307,16 +353,25 @@ class _ConversationBar extends StatelessWidget {
                     color: SignTalkColors.blueTint,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.chat_bubble, size: 16, color: SignTalkColors.primaryBlue),
+                  child: const Icon(
+                    Icons.chat_bubble,
+                    size: 16,
+                    color: SignTalkColors.primaryBlue,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     'Start a Conversation',
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(fontSize: 14),
+                    style: Theme.of(context).textTheme.labelLarge
+                        ?.copyWith(fontSize: 14),
                   ),
                 ),
-                const Icon(Icons.chevron_right, color: SignTalkColors.primaryBlue, size: 18),
+                const Icon(
+                  Icons.chevron_right,
+                  color: SignTalkColors.primaryBlue,
+                  size: 18,
+                ),
               ],
             ),
           ),
@@ -325,4 +380,3 @@ class _ConversationBar extends StatelessWidget {
     );
   }
 }
-

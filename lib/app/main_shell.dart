@@ -28,29 +28,35 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     final viewportWidth = MediaQuery.sizeOf(context).width;
-    final appWidth = viewportWidth < 390 ? viewportWidth : 390.0;
+    final appWidth = viewportWidth < 390
+        ? viewportWidth
+        : (viewportWidth < 760 ? 520.0 : 640.0);
     return Scaffold(
       backgroundColor: SignTalkColors.background,
       body: SafeArea(
         child: Center(
           child: SizedBox(
             width: appWidth,
-            child: Column(
-              children: [
-                Expanded(
-                  child: _videoCallOpen
-                      ? VideoCallScreen(
-                          contactName: _contactName,
-                          onClose: () => setState(() => _videoCallOpen = false),
-                        )
-                      : _buildTabBody(),
-                ),
-                if (!_videoCallOpen)
-                  _SignTalkBottomNav(
-                    selectedIndex: _selectedIndex,
-                    onSelected: _onTabSelected,
+            child: DecoratedBox(
+              decoration: const BoxDecoration(color: SignTalkColors.background),
+              child: Column(
+                children: [
+                  Expanded(
+                    child: _videoCallOpen
+                        ? VideoCallScreen(
+                            contactName: _contactName,
+                            onClose: () =>
+                                setState(() => _videoCallOpen = false),
+                          )
+                        : _buildTabBody(),
                   ),
-              ],
+                  if (!_videoCallOpen)
+                    _SignTalkBottomNav(
+                      selectedIndex: _selectedIndex,
+                      onSelected: _onTabSelected,
+                    ),
+                ],
+              ),
             ),
           ),
         ),
@@ -229,7 +235,8 @@ class _NavItem extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(8),
         child: SizedBox(
-          width: 64,
+          width: 76,
+          height: 58,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

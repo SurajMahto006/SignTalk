@@ -812,14 +812,17 @@ class _ComposerSection extends StatelessWidget {
               ),
             ],
           ),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text(
-              'Speak aloud after send',
-              style: TextStyle(fontSize: 13),
+          Material(
+            color: Colors.transparent,
+            child: SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text(
+                'Speak aloud after send',
+                style: TextStyle(fontSize: 13),
+              ),
+              value: speakAfterSend,
+              onChanged: onSpeakAfterSendChanged,
             ),
-            value: speakAfterSend,
-            onChanged: onSpeakAfterSendChanged,
           ),
           const SizedBox(height: 6),
           Row(
