@@ -14,6 +14,9 @@ abstract final class IncludeGlossPhrases {
     'good': 'Good',
     'morning': 'Morning',
     'goodmorning': 'Good morning',
+    'goodafternoon': 'Good afternoon',
+    'goodevening': 'Good evening',
+    'goodnight': 'Good night',
     'friend': 'Friend',
     'water': 'Water',
     'food': 'Food',
@@ -21,9 +24,15 @@ abstract final class IncludeGlossPhrases {
   };
 
   static String glossToReadable(String gloss) {
-    final key = gloss.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
-    if (key.isEmpty) return gloss;
-    return glossToEnglish[key] ?? _titleCase(gloss.replaceAll('_', ' '));
+    final stripped = gloss.trim().replaceFirst(RegExp(r'^\d+\.\s*'), '');
+    final key = stripped.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+    if (key.isEmpty) return stripped;
+    final mapped = glossToEnglish[key];
+    if (mapped != null) return mapped;
+    final spaced = stripped
+        .replaceAll('_', ' ')
+        .replaceAllMapped(RegExp(r'([a-z])([A-Z])'), (m) => '${m[1]} ${m[2]}');
+    return _titleWords(spaced);
   }
 
   static String toReadableSentence(Iterable<String> glosses) {
@@ -34,10 +43,10 @@ abstract final class IncludeGlossPhrases {
 
   /// Controlled English for multi-sign utterances (template layer — no LLM).
   static String toTemplateSentence(List<String> glosses) {
-    final keys = glosses
-        .map((g) => g.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), ''))
-        .where((k) => k.isNotEmpty)
-        .toList();
+    final keys = glosses.map((g) {
+      final stripped = g.trim().replaceFirst(RegExp(r'^\d+\.\s*'), '');
+      return stripped.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+    }).where((k) => k.isNotEmpty).toList();
     if (keys.isEmpty) return '';
     if (keys.length == 1) {
       final w = glossToReadable(keys.first);
@@ -72,12 +81,28 @@ abstract final class IncludeGlossPhrases {
       return 'How ${glossToReadable(keys[1]).toLowerCase()}?';
     }
 
-    final words = keys.map(glossToReadable).toList();
-    return '${words.join(', ')}.';
+    final words = keys.map(glossToReadable).where((w) => w.isNotEmpty).toList();
+    if (words.isEmpty) return '';
+    if (words.length == 1) {
+      return words.first.endsWith('.') ? words.first : '${words.first}.';
+    }
+    final sentence = words.asMap().entries.map((entry) {
+      if (entry.key == 0) return entry.value;
+      return _lowerFirst(entry.value);
+    }).join(' ');
+    return sentence.endsWith('.') ? sentence : '$sentence.';
   }
 
-  static String _titleCase(String input) {
+  static String _titleWords(String input) {
+    final parts = input.split(RegExp(r'\s+')).where((w) => w.isNotEmpty);
+    return parts.map((word) {
+      if (word.isEmpty) return word;
+      return word[0].toUpperCase() + word.substring(1).toLowerCase();
+    }).join(' ');
+  }
+
+  static String _lowerFirst(String input) {
     if (input.isEmpty) return input;
-    return input[0].toUpperCase() + input.substring(1);
+    return input[0].toLowerCase() + input.substring(1);
   }
 }

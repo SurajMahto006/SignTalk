@@ -69,6 +69,7 @@ const ALLOWED_RELAY_TYPES = new Set([
   'candidate',
   'gesture_caption',
   'isl_caption',
+  'speech_caption',
 ]);
 
 function canRelay(msg) {

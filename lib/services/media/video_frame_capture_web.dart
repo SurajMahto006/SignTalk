@@ -2,13 +2,21 @@ import 'dart:convert';
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 
+@JS('SignTalkFrameCapture')
+external _SignTalkFrameCaptureJs? get _signTalkFrameCapture;
+
 class VideoFrameCapture {
   const VideoFrameCapture();
 
   bool get isSupported => true;
 
-  @JS('SignTalkFrameCapture')
-  external static _SignTalkFrameCaptureJs? get _api;
+  _SignTalkFrameCaptureJs? get _api {
+    try {
+      return _signTalkFrameCapture;
+    } catch (_) {
+      return null;
+    }
+  }
 
   Future<List<int>> captureSingleJpeg({String? videoElementId}) async {
     final clip = await captureClipJpegs(

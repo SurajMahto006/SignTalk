@@ -13,6 +13,7 @@ import '../../services/webrtc/webrtc_call_config.dart';
 import '../../services/gesture/gesture_demo_labels.dart';
 import '../../services/gesture/gesture_recognizer_service.dart';
 import '../../services/isl/http_isl_recognition_adapter.dart';
+import '../../services/isl/isl_browser_recognizer.dart';
 import '../../services/isl/isl_live_recognition.dart';
 import '../../services/isl/isl_sentence_composer.dart';
 import '../../services/webrtc/webrtc_call_service.dart';
@@ -61,10 +62,16 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   DateTime? _lastRemoteDetectAt;
   bool _gestureHelpExpanded = false;
   final _islLive = IslLiveRecognition();
+  final _islBrowser = createIslBrowserRecognizer();
+  bool _islBrowserActive = false;
   final _islComposer = IslSentenceComposer();
   Timer? _islPollTimer;
   Timer? _islComposerTickTimer;
   StreamSubscription<IslCaptionMessage>? _islCaptionSub;
+  StreamSubscription<SpeechCaptionMessage>? _speechCaptionSub;
+  Timer? _speechRelayTimer;
+  String _lastSentSpeech = '';
+  String? _partnerSpeech;
   bool _islPipelineActive = false;
   bool _islRecognizeBusy = false;
   String _islStatus = 'ISL idle';
@@ -80,6 +87,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _call.addListener(_syncGesturePipelineWithCall);
     _remoteGestureSub = _call.gestureCaptions.listen(_onRemoteGestureCaption);
     _islCaptionSub = _call.islCaptions.listen(_onRemoteIslCaption);
+    _speechCaptionSub = _call.speechCaptions.listen(_onRemoteSpeechCaption);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await SignTalkScope.of(context).cameraPreview.stop();
       await _call.ensureRenderers();
@@ -122,7 +130,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _islComposer.reset();
     SignTalkScope.of(context).islRecognition.resetSmoothing();
     _islPollTimer?.cancel();
-    _islPollTimer = Timer.periodic(const Duration(milliseconds: 1100), (_) => unawaited(_pollIslFromLocalVideo()));
+    _islPollTimer = null;
     _islComposerTickTimer?.cancel();
     _islComposerTickTimer = Timer.periodic(const Duration(milliseconds: 400), (_) {
       final utteranceEnded = _islComposer.tick();
@@ -136,6 +144,33 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
         _syncIslSentenceToUi();
       }
     });
+    if (_islBrowser.isSupported) {
+      final ready = await _islBrowser.init();
+      var started = false;
+      if (ready) {
+        for (var attempt = 0; attempt < 24; attempt++) {
+          if (!mounted || !_call.isActive || !_islPipelineActive) return;
+          final videoId = webrtcLocalVideoElementId(_call.localRenderer);
+          if (_islBrowser.start(videoId)) {
+            started = true;
+            break;
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 250));
+        }
+      }
+      if (started) {
+        _islBrowserActive = true;
+        _stopLocalGesturePipeline();
+        _islPollTimer?.cancel();
+        _islPollTimer = Timer.periodic(const Duration(milliseconds: 200), (_) => _pollBrowserIsl());
+        if (mounted) {
+          setState(() => _islStatus = 'ISL — INCLUDE model, 263 words. Hold each sign about 2 seconds.');
+        }
+        return;
+      }
+    }
+
+    _islPollTimer = Timer.periodic(const Duration(milliseconds: 1100), (_) => unawaited(_pollIslFromLocalVideo()));
     if (mounted) {
       setState(() => _islStatus = 'ISL — hold signs; pauses build a sentence');
     }
@@ -145,6 +180,10 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   void _stopIslPipeline() {
     _islPollTimer?.cancel();
     _islPollTimer = null;
+    if (_islBrowserActive) {
+      _islBrowser.stop();
+      _islBrowserActive = false;
+    }
     _islComposerTickTimer?.cancel();
     _islComposerTickTimer = null;
     _islPipelineActive = false;
@@ -154,6 +193,25 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
         _localIslSentence = null;
       });
     }
+  }
+
+  void _pollBrowserIsl() {
+    if (!_islBrowserActive || !_call.isActive) return;
+    final hit = _islBrowser.consume();
+    if (hit == null) return;
+    if (hit.status == 'error' && hit.message != null) {
+      if (mounted) setState(() => _islStatus = 'ISL — ${hit.message}');
+      return;
+    }
+    if (!hit.isRecognized) return;
+    _islComposer.observeStableWord(hit.word!);
+    _islLiveWord = _islComposer.liveWordLabel;
+    _syncIslSentenceToUi();
+    _maybeRelayIslCaption(
+      word: hit.word!,
+      confidence: hit.score,
+    );
+    if (mounted) setState(() => _islStatus = 'ISL: ${_islComposer.liveWordLabel}');
   }
 
   Future<void> _pollIslFromLocalVideo() async {
@@ -180,7 +238,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   }
 
   void _maybeRelayIslCaption({required String word, required double confidence}) {
-    final sentence = _islComposer.readableSentence;
+    final sentence = _islComposer.readableSentence.isNotEmpty
+        ? _islComposer.readableSentence
+        : _islComposer.liveWordLabel;
     if (sentence.isEmpty) return;
     if (sentence == _lastSentIslSentence) return;
     _lastSentIslSentence = sentence;
@@ -207,7 +267,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     final prefs = SignTalkScope.preferencesOf(context);
     if (prefs.spokenOutputEnabled && msg.sentence.isNotEmpty) {
       unawaited(SignTalkScope.of(context).textToSpeech.speak(
-            'Partner signed: ${msg.sentence}',
+            msg.sentence,
             enabled: true,
           ));
     }
@@ -435,7 +495,26 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       _assistController.text = t;
       _assistController.selection = TextSelection.collapsed(offset: t.length);
     }
+    _scheduleSpeechRelay();
     if (mounted) setState(() {});
+  }
+
+  void _scheduleSpeechRelay() {
+    _speechRelayTimer?.cancel();
+    _speechRelayTimer = Timer(const Duration(milliseconds: 350), () {
+      final text = _captions.text.trim();
+      if (text.isEmpty || text == _lastSentSpeech) return;
+      final clipped = text.length > 240 ? text.substring(text.length - 240) : text;
+      if (_call.sendSpeechCaption(clipped)) {
+        _lastSentSpeech = clipped;
+      }
+    });
+  }
+
+  void _onRemoteSpeechCaption(SpeechCaptionMessage msg) {
+    final text = msg.text.trim();
+    if (text.isEmpty || !mounted) return;
+    setState(() => _partnerSpeech = text);
   }
 
   @override
@@ -454,6 +533,8 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _call.removeListener(_syncGesturePipelineWithCall);
     unawaited(_remoteGestureSub?.cancel());
     unawaited(_islCaptionSub?.cancel());
+    unawaited(_speechCaptionSub?.cancel());
+    _speechRelayTimer?.cancel();
     for (final s in _captionSubs) {
       unawaited(s.cancel());
     }
@@ -680,6 +761,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                                   islLocalSentence: _localIslSentence,
                                   islLocalLiveWord: _islLiveWord,
                                   islPartnerSentence: _remoteIslSentence,
+                          partnerSpeech: _partnerSpeech,
                                 ),
                               ),
                             ),
@@ -703,6 +785,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                           islLocalSentence: _localIslSentence,
                           islLocalLiveWord: _islLiveWord,
                           islPartnerSentence: _remoteIslSentence,
+                          partnerSpeech: _partnerSpeech,
                         ),
                       ),
                     ),
@@ -711,9 +794,13 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                   enabled: _call.localMediaReady || _call.isActive,
                   micOn: _call.micEnabled,
                   cameraOn: _call.cameraEnabled,
+                  captionsOn: _captionsListening,
                   onDark: inCall,
                   onToggleMic: () => unawaited(_call.setMicEnabled(!_call.micEnabled)),
                   onToggleCamera: () => unawaited(_call.setCameraEnabled(!_call.cameraEnabled)),
+                  onToggleCaptions: () => unawaited(
+                    _captionsListening ? _stopCaptions() : _startCaptions(),
+                  ),
                   onEnd: () => unawaited(_endCall()),
                 ),
                 _ConnectionDetailsSection(
@@ -860,6 +947,7 @@ class _CallVideoStack extends StatelessWidget {
     this.islLocalSentence,
     this.islLocalLiveWord,
     this.islPartnerSentence,
+    this.partnerSpeech,
   });
 
   final WebRtcCallService call;
@@ -870,6 +958,7 @@ class _CallVideoStack extends StatelessWidget {
   final String? islLocalSentence;
   final String? islLocalLiveWord;
   final String? islPartnerSentence;
+  final String? partnerSpeech;
 
   @override
   Widget build(BuildContext context) {
@@ -896,6 +985,13 @@ class _CallVideoStack extends StatelessWidget {
                     )
                   : null),
         ),
+        if (partnerSpeech != null && partnerSpeech!.isNotEmpty)
+          Positioned(
+            left: 10,
+            right: 110,
+            top: 10,
+            child: _SpeechBanner(text: partnerSpeech!),
+          ),
         if (islPartnerSentence != null && islPartnerSentence!.isNotEmpty)
           Positioned(
             left: 0,
@@ -1199,8 +1295,10 @@ class _GestureDemoHelpSection extends StatelessWidget {
             ),
           ],
           Text(
-            'Your signs appear on your preview and are sent to your partner. Their signs show on your main video '
-            '(and vice versa). Spoken output says the word only: HELLO, YES, or STOP.',
+            'The call uses the INCLUDE Indian Sign Language model (263 words, including Hello, '
+            'family, colours, places, and everyday words). Hold a sign for about two seconds. '
+            'The word shows on the video and is spoken on the other side. '
+            'This is isolated-word recognition, not a full interpreter of every ISL sentence.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 11, height: 1.35),
           ),
           const SizedBox(height: 6),
@@ -1345,23 +1443,57 @@ class _LobbyPanel extends StatelessWidget {
   }
 }
 
+class _SpeechBanner extends StatelessWidget {
+  const _SpeechBanner({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xF0143D36),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Text(
+          text,
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            height: 1.25,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _CallControls extends StatelessWidget {
   const _CallControls({
     required this.enabled,
     required this.micOn,
     required this.cameraOn,
+    required this.captionsOn,
     required this.onDark,
     required this.onToggleMic,
     required this.onToggleCamera,
+    required this.onToggleCaptions,
     required this.onEnd,
   });
 
   final bool enabled;
   final bool micOn;
   final bool cameraOn;
+  final bool captionsOn;
   final bool onDark;
   final VoidCallback onToggleMic;
   final VoidCallback onToggleCamera;
+  final VoidCallback onToggleCaptions;
   final VoidCallback onEnd;
 
   @override
@@ -1382,6 +1514,12 @@ class _CallControls extends StatelessWidget {
             label: cameraOn ? 'Video off' : 'Video on',
             onDark: onDark,
             onTap: enabled ? onToggleCamera : null,
+          ),
+          _RoundBtn(
+            icon: captionsOn ? Icons.closed_caption : Icons.closed_caption_disabled,
+            label: captionsOn ? 'Captions on' : 'Captions',
+            onDark: onDark,
+            onTap: enabled ? onToggleCaptions : null,
           ),
           _RoundBtn(
             icon: Icons.call_end,

@@ -1,0 +1,53 @@
+{
+  "checkpoint_loaded": true,
+  "classes": 263,
+  "tensor_check": {
+    "ok": true,
+    "checked": {
+      "decoder.rnn.weight_ih_l0": [
+        512,
+        54
+      ],
+      "decoder.attn_block.fc1.weight": [
+        256,
+        256
+      ],
+      "decoder.attn_block.fc2.weight": [
+        256,
+        512
+      ],
+      "decoder.fc.weight": [
+        263,
+        256
+      ],
+      "decoder.fc.bias": [
+        263
+      ]
+    },
+    "errors": []
+  },
+  "sequence_length_check": {
+    "one_frame": {
+      "supported": true,
+      "input_frames": 1,
+      "logits": 263
+    },
+    "nine_frames": {
+      "supported": true,
+      "input_frames": 9,
+      "logits": 263
+    },
+    "variable": {
+      "supported": true,
+      "input_frames": 17,
+      "logits": 263
+    }
+  },
+  "one_frame_supported": true,
+  "test_csv": "C:\\Users\\Lenovo\\Desktop\\SignTalk\\tools\\isl-sidecar\\openhands_assets\\include_metadata\\Train_Test_Split\\test_include.csv",
+  "pose_root": "/home/gokulnc/data-disk/datasets/Indian/INCLUDE/Pose_Signs",
+  "pose_root_exists": false,
+  "test_rows": 817,
+  "reason": "INCLUDE pose files are not available. Looked for Pose_Signs at /home/gokulnc/data-disk/datasets/Indian/INCLUDE/Pose_Signs. The split CSV is present, but keypoints were not bundled. Set INCLUDE_POSE_ROOT to a local Pose_Signs directory and rerun. No predictions were invented.",
+  "metrics_computed": false
+}

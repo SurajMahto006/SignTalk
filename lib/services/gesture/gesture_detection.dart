@@ -43,3 +43,13 @@ class IslCaptionMessage {
   final String sentence;
   final double confidence;
 }
+
+class SpeechCaptionMessage {
+  const SpeechCaptionMessage({
+    required this.fromParticipantId,
+    required this.text,
+  });
+
+  final String? fromParticipantId;
+  final String text;
+}

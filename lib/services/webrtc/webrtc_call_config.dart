@@ -108,8 +108,11 @@ class WebRtcCallConfig {
     if (isHttps && hostUsesAppOnlyQuickTunnel(host)) {
       return '';
     }
-    final wsScheme = isHttps ? 'wss' : 'ws';
-    return '$wsScheme://$host:$port';
+    // Deployed site serves the app and signaling on the same HTTPS host.
+    if (isHttps) {
+      return 'wss://$host';
+    }
+    return 'ws://$host:$port';
   }
 
   static bool get pageIsSecureContext {
