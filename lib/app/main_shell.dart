@@ -235,8 +235,7 @@ class _NavItem extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(8),
         child: SizedBox(
-          width: 76,
-          height: 58,
+          width: 70,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
