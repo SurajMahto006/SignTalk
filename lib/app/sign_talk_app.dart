@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/communication/conversation_draft.dart';
 import '../services/isl/isl_recognition_adapter.dart';
+import '../services/isl/isl_recognition_factory.dart';
 import '../services/media/camera_preview_service.dart';
 import '../services/permissions/device_permission_status.dart';
 import '../services/preferences/sign_talk_preferences.dart';
@@ -26,7 +27,7 @@ class _SignTalkAppState extends State<SignTalkApp> {
   final DevicePermissionStatus _permissionStatus = DevicePermissionStatus();
   final ConversationDraft _conversationDraft = ConversationDraft();
   late final SmoothedIslRecognitionService _islRecognition =
-      SmoothedIslRecognitionService(DisconnectedIslRecognitionAdapter());
+      SmoothedIslRecognitionService(createIslRecognitionAdapter());
 
   @override
   void initState() {

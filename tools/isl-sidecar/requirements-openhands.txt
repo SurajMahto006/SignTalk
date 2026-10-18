@@ -1,0 +1,7 @@
+# OpenHands INCLUDE inference (Python 3.9 only — see openhands_assets/README.md).
+# Install inside .venv-openhands-py39 after Python 3.9 is available:
+#   pip install -r requirements-openhands.txt
+# AI4Bharat sign-language library (NOT PyPI "OpenHands"/"openhands" coding-agent packages).
+# Installs from Git; upstream setup.py reads docs/requirements.txt (unpinned torch, pytorchvideo, etc.).
+git+https://github.com/AI4Bharat/OpenHands.git
+omegaconf>=2.1.0

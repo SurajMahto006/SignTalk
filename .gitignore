@@ -1,3 +1,7 @@
+# ISL sidecar — large OpenHands downloads (keep locally; see openhands_assets/README.md)
+tools/isl-sidecar/downloads/
+tools/isl-sidecar/.venv-openhands-py39/
+
 # Miscellaneous
 *.class
 *.log

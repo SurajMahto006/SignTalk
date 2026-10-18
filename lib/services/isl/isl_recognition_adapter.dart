@@ -36,7 +36,7 @@ abstract class IslRecognitionAdapter {
   IslRecognitionAvailability get availability;
 
   Future<IslRecognitionResult> recognizeClip({
-    required List<int> jpegFrames,
+    required List<List<int>> jpegFrames,
   });
 
   void dispose() {}
@@ -53,7 +53,7 @@ class DisconnectedIslRecognitionAdapter implements IslRecognitionAdapter {
 
   @override
   Future<IslRecognitionResult> recognizeClip({
-    required List<int> jpegFrames,
+    required List<List<int>> jpegFrames,
   }) async {
     return const IslRecognitionResult(
       availability: IslRecognitionAvailability.notConnected,
@@ -79,7 +79,7 @@ class SmoothedIslRecognitionService {
   void resetSmoothing() => _smoother.reset();
 
   Future<IslRecognitionResult> recognizeClip({
-    required List<int> jpegFrames,
+    required List<List<int>> jpegFrames,
   }) async {
     final raw = await adapter.recognizeClip(jpegFrames: jpegFrames);
     if (raw.availability != IslRecognitionAvailability.ready ||

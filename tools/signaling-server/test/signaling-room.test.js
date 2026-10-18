@@ -27,8 +27,10 @@ test('parseMessage rejects non-JSON', () => {
   assert.equal(room.parseMessage('not json'), null);
 });
 
-test('canRelay allows offer answer candidate gesture_caption', () => {
+test('canRelay allows offer answer candidate gesture_caption isl_caption', () => {
   assert.equal(room.canRelay({ type: 'offer' }), true);
   assert.equal(room.canRelay({ type: 'gesture_caption' }), true);
+  assert.equal(room.canRelay({ type: 'isl_caption' }), true);
+  assert.equal(room.canRelay({ type: 'speech_caption' }), true);
   assert.equal(room.canRelay({ type: 'join' }), false);
 });
