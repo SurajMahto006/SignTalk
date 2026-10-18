@@ -20,23 +20,70 @@ class SettingsScreen extends StatelessWidget {
       listenable: Listenable.merge([prefs, permissionStatus, auth]),
       builder: (context, _) {
         return ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
           children: [
-            const Center(
-              child: Text(
-                'Settings',
-                style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: SignTalkColors.primaryText),
-              ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Settings',
+                        style: TextStyle(
+                          fontSize: 24,
+                          height: 1.1,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.5,
+                          color: SignTalkColors.primaryText,
+                        ),
+                      ),
+                      SizedBox(height: 3),
+                      Text(
+                        'Customize your SignTalk experience',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: SignTalkColors.secondaryText,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Material(
+                  color: SignTalkColors.card,
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    onTap: () => _showInfo(
+                      context,
+                      'Notifications',
+                      'You are all caught up. SignTalk will show important permission and accessibility updates here.',
+                    ),
+                    customBorder: const CircleBorder(),
+                    child: const SizedBox(
+                      width: 42,
+                      height: 42,
+                      child: Icon(
+                        Icons.notifications_none_rounded,
+                        color: SignTalkColors.primaryText,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
             if (prefs.loadError != null) ...[
               const SizedBox(height: 8),
               Text(
                 prefs.loadError!,
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 12, color: SignTalkColors.callRed),
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: SignTalkColors.callRed,
+                ),
               ),
             ],
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             _ProfileCard(
               user: user,
               onTap: () => _showProfileDialog(context, user),
@@ -44,11 +91,13 @@ class SettingsScreen extends StatelessWidget {
             const SizedBox(height: 14),
             _SettingsGroup(
               title: 'Accessibility',
+              subtitle: 'Make the app comfortable for you',
               icon: Icons.accessibility_new,
               children: [
                 _ChevronRow(
                   icon: Icons.format_size,
                   label: 'Text Size',
+                  subtitle: 'Adjust text size for better readability',
                   value: prefs.textSize,
                   onTap: () async {
                     final next = switch (prefs.textSize) {
@@ -63,12 +112,14 @@ class SettingsScreen extends StatelessWidget {
                 _SwitchRow(
                   icon: Icons.closed_caption_outlined,
                   label: 'Captions',
+                  subtitle: 'Show captions in conversations',
                   value: prefs.captionsEnabled,
                   onChanged: (v) => prefs.setCaptionsEnabled(v),
                 ),
                 _SwitchRow(
                   icon: Icons.vibration,
                   label: 'Haptic Feedback',
+                  subtitle: 'Get vibration feedback for actions',
                   value: prefs.hapticEnabled,
                   onChanged: (v) => prefs.setHapticEnabled(v),
                 ),
@@ -77,11 +128,13 @@ class SettingsScreen extends StatelessWidget {
             const SizedBox(height: 14),
             _SettingsGroup(
               title: 'Language & Voice',
+              subtitle: 'Choose your preferred languages and voice settings',
               icon: Icons.language,
               children: [
                 _ChevronRow(
                   icon: Icons.back_hand_outlined,
                   label: 'Sign Language',
+                  subtitle: 'Select your sign language',
                   value: 'ISL (Indian)',
                   onTap: () => _showInfo(
                     context,
@@ -92,12 +145,14 @@ class SettingsScreen extends StatelessWidget {
                 _ChevronRow(
                   icon: Icons.record_voice_over_outlined,
                   label: 'Speech Language',
+                  subtitle: 'Language for speech to text',
                   value: prefs.speechLanguageLabel,
                   onTap: () => _pickSpeechLanguage(context, prefs),
                 ),
                 _SwitchRow(
                   icon: Icons.volume_up_outlined,
                   label: 'Spoken Output',
+                  subtitle: 'Read out messages using text to speech',
                   value: prefs.spokenOutputEnabled,
                   onChanged: (v) => prefs.setSpokenOutputEnabled(v),
                 ),
@@ -106,30 +161,33 @@ class SettingsScreen extends StatelessWidget {
             const SizedBox(height: 14),
             _SettingsGroup(
               title: 'Permissions',
+              subtitle: 'Manage app permissions',
               icon: Icons.shield_outlined,
               children: [
                 _StatusRow(
                   icon: Icons.photo_camera_outlined,
                   label: 'Camera Access',
+                  subtitle: 'Used for video calls and sign detection',
                   status: permissionStatus.cameraStatusLabel(),
                   statusColor: _permissionColor(permissionStatus.cameraGranted),
                   onTap: () => _showInfo(
                     context,
                     'Camera permission',
-                    permissionStatus.cameraDetail ??
-                        'Camera is requested when you tap Start Camera on Sign to Text. Status reflects your last attempt in this browser session.',
+                    permissionStatus.cameraDetail ?? 'Camera is requested when you tap Start Camera on Sign to Text. Status reflects your last attempt in this browser session.',
                   ),
                 ),
                 _StatusRow(
                   icon: Icons.mic_none_outlined,
                   label: 'Microphone Access',
+                  subtitle: 'Used for speech to text',
                   status: permissionStatus.microphoneStatusLabel(),
-                  statusColor: _permissionColor(permissionStatus.microphoneGranted),
+                  statusColor: _permissionColor(
+                    permissionStatus.microphoneGranted,
+                  ),
                   onTap: () => _showInfo(
                     context,
                     'Microphone permission',
-                    permissionStatus.microphoneDetail ??
-                        'Microphone is requested when you start speech recognition. Status reflects your last attempt in this browser session.',
+                    permissionStatus.microphoneDetail ?? 'Microphone is requested when you start speech recognition. Status reflects your last attempt in this browser session.',
                   ),
                 ),
               ],
@@ -137,11 +195,13 @@ class SettingsScreen extends StatelessWidget {
             const SizedBox(height: 14),
             _SettingsGroup(
               title: 'Privacy & Support',
+              subtitle: 'Your privacy, help and app information',
               icon: Icons.verified_user_outlined,
               children: [
                 _ChevronRow(
                   icon: Icons.privacy_tip_outlined,
                   label: 'Privacy Policy',
+                  subtitle: 'Read our privacy policy',
                   onTap: () => _showInfo(
                     context,
                     'Privacy Policy',
@@ -151,6 +211,7 @@ class SettingsScreen extends StatelessWidget {
                 _ChevronRow(
                   icon: Icons.support_agent,
                   label: 'Help & Support',
+                  subtitle: 'Get help or contact support',
                   onTap: () => _showInfo(
                     context,
                     'Help & Support',
@@ -160,6 +221,7 @@ class SettingsScreen extends StatelessWidget {
                 _ChevronRow(
                   icon: Icons.info_outline,
                   label: 'About SignTalk',
+                  subtitle: 'App version and information',
                   value: 'v1.0.0',
                   onTap: () => _showInfo(
                     context,
@@ -172,23 +234,24 @@ class SettingsScreen extends StatelessWidget {
             const SizedBox(height: 14),
             _SettingsGroup(
               title: 'Account & Session',
+              subtitle: 'Manage your account details',
               icon: Icons.manage_accounts_outlined,
               children: [
                 _ChevronRow(
                   icon: Icons.alternate_email,
                   label: 'Unique User ID',
+                  subtitle: 'Your app user identifier',
                   value: user != null ? '@${user.userId}' : '@demo_user',
                   onTap: () => _showProfileDialog(context, user),
                 ),
                 _ChevronRow(
                   icon: Icons.badge_outlined,
                   label: 'Community Role',
+                  subtitle: 'Your role in the community',
                   value: user?.role ?? 'ISL Signer',
                   onTap: () => _showProfileDialog(context, user),
                 ),
-                _LogoutRow(
-                  onTap: () => _confirmLogout(context),
-                ),
+                _LogoutRow(onTap: () => _confirmLogout(context)),
               ],
             ),
           ],
@@ -236,7 +299,10 @@ class SettingsScreen extends StatelessWidget {
         title: Text(title),
         content: Text(body),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
         ],
       ),
     );
@@ -258,7 +324,11 @@ class SettingsScreen extends StatelessWidget {
               alignment: Alignment.center,
               child: Text(
                 _getInitials(user?.name ?? 'Demo User'),
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
               ),
             ),
             const SizedBox(width: 10),
@@ -269,11 +339,20 @@ class SettingsScreen extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _ProfileDetailItem(label: 'Full Name', value: user?.name ?? 'Demo User'),
+            _ProfileDetailItem(
+              label: 'Full Name',
+              value: user?.name ?? 'Demo User',
+            ),
             const SizedBox(height: 10),
-            _ProfileDetailItem(label: 'Unique User ID', value: '@${user?.userId ?? 'demo_user'}'),
+            _ProfileDetailItem(
+              label: 'Unique User ID',
+              value: '@${user?.userId ?? 'demo_user'}',
+            ),
             const SizedBox(height: 10),
-            _ProfileDetailItem(label: 'Role', value: user?.role ?? 'ISL Communicator'),
+            _ProfileDetailItem(
+              label: 'Role',
+              value: user?.role ?? 'ISL Communicator',
+            ),
             if (user?.email != null && user!.email.isNotEmpty) ...[
               const SizedBox(height: 10),
               _ProfileDetailItem(label: 'Email', value: user.email),
@@ -288,11 +367,19 @@ class SettingsScreen extends StatelessWidget {
               ),
               child: const Row(
                 children: [
-                  Icon(Icons.verified, size: 16, color: SignTalkColors.primaryBlue),
+                  Icon(
+                    Icons.verified,
+                    size: 16,
+                    color: SignTalkColors.primaryBlue,
+                  ),
                   SizedBox(width: 6),
                   Text(
                     'Verified Unique ID Account',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: SignTalkColors.primaryBlue),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: SignTalkColors.primaryBlue,
+                    ),
                   ),
                 ],
               ),
@@ -323,7 +410,9 @@ class SettingsScreen extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: SignTalkColors.callRed),
+            style: FilledButton.styleFrom(
+              backgroundColor: SignTalkColors.callRed,
+            ),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Log Out'),
           ),
@@ -360,12 +449,20 @@ class _ProfileDetailItem extends StatelessWidget {
       children: [
         Text(
           label,
-          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: SignTalkColors.secondaryText),
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: SignTalkColors.secondaryText,
+          ),
         ),
         const SizedBox(height: 2),
         Text(
           value,
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: SignTalkColors.primaryText),
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: SignTalkColors.primaryText,
+          ),
         ),
       ],
     );
@@ -394,6 +491,11 @@ class _ProfileCard extends StatelessWidget {
         child: Ink(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
+            gradient: const LinearGradient(
+              colors: [Colors.white, Color(0xFFE8F2FF)],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
             border: Border.all(color: SignTalkColors.border),
             boxShadow: const [SignTalkColors.cardShadow],
           ),
@@ -402,13 +504,20 @@ class _ProfileCard extends StatelessWidget {
             child: Row(
               children: [
                 Container(
-                  width: 44,
-                  height: 44,
-                  decoration: const BoxDecoration(color: SignTalkColors.primaryBlue, shape: BoxShape.circle),
+                  width: 56,
+                  height: 56,
+                  decoration: const BoxDecoration(
+                    color: SignTalkColors.primaryBlue,
+                    shape: BoxShape.circle,
+                  ),
                   alignment: Alignment.center,
                   child: Text(
                     initials,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -418,17 +527,50 @@ class _ProfileCard extends StatelessWidget {
                     children: [
                       Text(
                         displayName,
-                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: SignTalkColors.primaryText),
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          color: SignTalkColors.primaryText,
+                        ),
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '$userHandle · $role',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: SignTalkColors.secondaryText),
+                        userHandle,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: SignTalkColors.secondaryText,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: SignTalkColors.tintBlue,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          child: Text(
+                            role,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: SignTalkColors.primaryBlue,
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right, color: Color(0xFFA1A1A6), size: 20),
+                const Icon(
+                  Icons.chevron_right,
+                  color: Color(0xFFA1A1A6),
+                  size: 20,
+                ),
               ],
             ),
           ),
@@ -439,9 +581,15 @@ class _ProfileCard extends StatelessWidget {
 }
 
 class _SettingsGroup extends StatelessWidget {
-  const _SettingsGroup({required this.title, required this.icon, required this.children});
+  const _SettingsGroup({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.children,
+  });
 
   final String title;
+  final String subtitle;
   final IconData icon;
   final List<Widget> children;
 
@@ -458,12 +606,34 @@ class _SettingsGroup extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
             child: Row(
               children: [
-                Icon(icon, size: 18, color: SignTalkColors.primaryBlue),
+                _SettingIcon(icon: icon, tint: SignTalkColors.tintBlue),
                 const SizedBox(width: 8),
-                Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: SignTalkColors.primaryText)),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: SignTalkColors.primaryText,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: SignTalkColors.secondaryText,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -478,12 +648,14 @@ class _ChevronRow extends StatelessWidget {
   const _ChevronRow({
     required this.icon,
     required this.label,
+    this.subtitle,
     this.value,
     required this.onTap,
   });
 
   final IconData icon;
   final String label;
+  final String? subtitle;
   final String? value;
   final VoidCallback onTap;
 
@@ -493,15 +665,10 @@ class _ChevronRow extends StatelessWidget {
       onTap: onTap,
       child: Row(
         children: [
-          Icon(icon, size: 18, color: SignTalkColors.secondaryText),
+          _SettingIcon(icon: icon, tint: SignTalkColors.purpleTint),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 13.5, color: SignTalkColors.primaryText),
-            ),
+            child: _SettingText(label: label, subtitle: subtitle),
           ),
           if (value != null) ...[
             const SizedBox(width: 8),
@@ -526,6 +693,7 @@ class _StatusRow extends StatelessWidget {
   const _StatusRow({
     required this.icon,
     required this.label,
+    this.subtitle,
     required this.status,
     required this.statusColor,
     required this.onTap,
@@ -533,6 +701,7 @@ class _StatusRow extends StatelessWidget {
 
   final IconData icon;
   final String label;
+  final String? subtitle;
   final String status;
   final Color statusColor;
   final VoidCallback onTap;
@@ -543,15 +712,10 @@ class _StatusRow extends StatelessWidget {
       onTap: onTap,
       child: Row(
         children: [
-          Icon(icon, size: 18, color: SignTalkColors.secondaryText),
+          _SettingIcon(icon: icon, tint: SignTalkColors.purpleTint),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 13.5, color: SignTalkColors.primaryText),
-            ),
+            child: _SettingText(label: label, subtitle: subtitle),
           ),
           const SizedBox(width: 8),
           Flexible(
@@ -559,7 +723,11 @@ class _StatusRow extends StatelessWidget {
               status,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: statusColor),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: statusColor,
+              ),
             ),
           ),
           const SizedBox(width: 4),
@@ -574,12 +742,14 @@ class _SwitchRow extends StatelessWidget {
   const _SwitchRow({
     required this.icon,
     required this.label,
+    this.subtitle,
     required this.value,
     required this.onChanged,
   });
 
   final IconData icon;
   final String label;
+  final String? subtitle;
   final bool value;
   final ValueChanged<bool> onChanged;
 
@@ -588,9 +758,11 @@ class _SwitchRow extends StatelessWidget {
     return _SettingsRowShell(
       child: Row(
         children: [
-          Icon(icon, size: 18, color: SignTalkColors.secondaryText),
+          _SettingIcon(icon: icon, tint: SignTalkColors.greenTint),
           const SizedBox(width: 10),
-          Expanded(child: Text(label, style: const TextStyle(fontSize: 13.5, color: SignTalkColors.primaryText))),
+          Expanded(
+            child: _SettingText(label: label, subtitle: subtitle),
+          ),
           Switch.adaptive(
             value: value,
             activeTrackColor: SignTalkColors.primaryBlue.withValues(alpha: 0.5),
@@ -619,7 +791,11 @@ class _LogoutRow extends StatelessWidget {
           Expanded(
             child: Text(
               'Log Out of SignTalk',
-              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: SignTalkColors.callRed),
+              style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+                color: SignTalkColors.callRed,
+              ),
             ),
           ),
           Icon(Icons.chevron_right, size: 16, color: SignTalkColors.callRed),
@@ -637,15 +813,79 @@ class _SettingsRowShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final content = Padding(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10), child: child);
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      child: child,
+    );
     return DecoratedBox(
-      decoration: const BoxDecoration(border: Border(top: BorderSide(color: SignTalkColors.dividerLight))),
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: SignTalkColors.dividerLight)),
+      ),
       child: onTap == null
           ? content
           : Material(
               color: Colors.transparent,
               child: InkWell(onTap: onTap, child: content),
             ),
+    );
+  }
+}
+
+class _SettingText extends StatelessWidget {
+  const _SettingText({required this.label, this.subtitle});
+
+  final String label;
+  final String? subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: SignTalkColors.primaryText,
+          ),
+        ),
+        if (subtitle != null) ...[
+          const SizedBox(height: 2),
+          Text(
+            subtitle!,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 12,
+              color: SignTalkColors.secondaryText,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _SettingIcon extends StatelessWidget {
+  const _SettingIcon({required this.icon, required this.tint});
+
+  final IconData icon;
+  final Color tint;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(
+        color: tint,
+        borderRadius: BorderRadius.circular(11),
+      ),
+      alignment: Alignment.center,
+      child: Icon(icon, size: 19, color: SignTalkColors.primaryBlue),
     );
   }
 }

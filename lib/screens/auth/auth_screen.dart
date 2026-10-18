@@ -30,11 +30,7 @@ class _AuthScreenState extends State<AuthScreen> {
   String? _userIdStatusMessage;
   bool? _isUserIdAvailable;
 
-  static const _personStatuses = [
-    'Mute',
-    'Deaf',
-    'Normal',
-  ];
+  static const _personStatuses = ['Mute', 'Deaf', 'Normal'];
 
   @override
   void initState() {
@@ -76,7 +72,8 @@ class _AuthScreenState extends State<AuthScreen> {
     if (!validIdRegex.hasMatch(text)) {
       setState(() {
         _isUserIdAvailable = false;
-        _userIdStatusMessage = 'Use only letters, numbers, dot, and underscore.';
+        _userIdStatusMessage =
+            'Use only letters, numbers, dot, and underscore.';
       });
       return;
     }
@@ -126,10 +123,7 @@ class _AuthScreenState extends State<AuthScreen> {
           setState(() => _errorMessage = result.message);
         }
       } else {
-        final result = await auth.login(
-          userId: userId,
-          password: password,
-        );
+        final result = await auth.login(userId: userId, password: password);
 
         if (!mounted) return;
         if (!result.success) {
@@ -154,39 +148,64 @@ class _AuthScreenState extends State<AuthScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final compact = MediaQuery.sizeOf(context).height < 700;
     return Scaffold(
       backgroundColor: SignTalkColors.background,
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
+            constraints: const BoxConstraints(maxWidth: 720),
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+              padding: EdgeInsets.symmetric(
+                horizontal: 18,
+                vertical: compact ? 4 : 12,
+              ),
               child: Form(
                 key: _formKey,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const SizedBox(height: 12),
+                    _AuthHeroIllustration(height: compact ? 40 : 235),
+                    const SizedBox(height: 4),
                     _buildBrandHeader(),
-                    const SizedBox(height: 24),
-                    _buildModeToggle(),
-                    const SizedBox(height: 20),
-                    if (_errorMessage != null) ...[
-                      _buildErrorBanner(_errorMessage!),
-                      const SizedBox(height: 16),
-                    ],
-                    if (_mode == AuthMode.register) ...[
-                      _buildRegisterFields(),
-                    ] else ...[
-                      _buildSignInFields(),
-                    ],
-                    const SizedBox(height: 24),
-                    _buildSubmitButton(),
-                    const SizedBox(height: 16),
-                    _buildDemoAccountButton(),
-                    const SizedBox(height: 20),
-                    _buildFooterNote(),
+                    SizedBox(height: compact ? 8 : 24),
+                    Card(
+                      elevation: 0,
+                      color: SignTalkColors.card.withValues(alpha: 0.88),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        side: const BorderSide(color: SignTalkColors.border),
+                      ),
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          18,
+                          compact ? 12 : 18,
+                          18,
+                          compact ? 12 : 20,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _buildModeToggle(),
+                            const SizedBox(height: 22),
+                            if (_errorMessage != null) ...[
+                              _buildErrorBanner(_errorMessage!),
+                              const SizedBox(height: 16),
+                            ],
+                            if (_mode == AuthMode.register)
+                              _buildRegisterFields()
+                            else
+                              _buildSignInFields(),
+                            const SizedBox(height: 24),
+                            _buildSubmitButton(),
+                            const SizedBox(height: 14),
+                            _buildDemoAccountButton(),
+                            const SizedBox(height: 18),
+                            _buildFooterNote(),
+                          ],
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -224,9 +243,9 @@ class _AuthScreenState extends State<AuthScreen> {
         const Text(
           'SignTalk',
           style: TextStyle(
-            fontSize: 26,
+            fontSize: 30,
             fontWeight: FontWeight.w800,
-            letterSpacing: -0.5,
+            letterSpacing: -0.8,
             color: SignTalkColors.primaryText,
           ),
         ),
@@ -234,7 +253,7 @@ class _AuthScreenState extends State<AuthScreen> {
         Text(
           'Bridging Indian Sign Language & Speech',
           style: TextStyle(
-            fontSize: 13,
+            fontSize: 14,
             color: SignTalkColors.secondaryText.withValues(alpha: 0.9),
             fontWeight: FontWeight.w500,
           ),
@@ -296,7 +315,11 @@ class _AuthScreenState extends State<AuthScreen> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.badge_outlined, size: 20, color: SignTalkColors.primaryBlue),
+            Icon(
+              Icons.badge_outlined,
+              size: 20,
+              color: SignTalkColors.primaryBlue,
+            ),
             SizedBox(width: 10),
             Expanded(
               child: Text(
@@ -320,13 +343,19 @@ class _AuthScreenState extends State<AuthScreen> {
       decoration: BoxDecoration(
         color: SignTalkColors.callRed.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: SignTalkColors.callRed.withValues(alpha: 0.25)),
+        border: Border.all(
+          color: SignTalkColors.callRed.withValues(alpha: 0.25),
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Row(
           children: [
-            const Icon(Icons.error_outline, size: 18, color: SignTalkColors.callRed),
+            const Icon(
+              Icons.error_outline,
+              size: 18,
+              color: SignTalkColors.callRed,
+            ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -355,12 +384,17 @@ class _AuthScreenState extends State<AuthScreen> {
             hintText: 'Enter your User ID (e.g. demo_user)',
             prefixIcon: const Padding(
               padding: EdgeInsets.only(left: 14, right: 8),
-              child: Icon(Icons.alternate_email, size: 20, color: SignTalkColors.secondaryText),
+              child: Icon(
+                Icons.alternate_email,
+                size: 20,
+                color: SignTalkColors.secondaryText,
+              ),
             ),
             prefixIconConstraints: const BoxConstraints(minWidth: 42),
           ),
-          validator: (v) =>
-              (v == null || v.trim().isEmpty) ? 'Please enter your User ID.' : null,
+          validator: (v) => (v == null || v.trim().isEmpty)
+              ? 'Please enter your User ID.'
+              : null,
         ),
         const SizedBox(height: 16),
         _buildTextFieldLabel('Password'),
@@ -371,16 +405,24 @@ class _AuthScreenState extends State<AuthScreen> {
             hintText: 'Enter your password',
             prefixIcon: const Padding(
               padding: EdgeInsets.only(left: 14, right: 8),
-              child: Icon(Icons.lock_outline, size: 20, color: SignTalkColors.secondaryText),
-            ),
-            prefixIconConstraints: const BoxConstraints(minWidth: 42),
-            suffixIcon: IconButton(
-              icon: Icon(
-                _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+              child: Icon(
+                Icons.lock_outline,
                 size: 20,
                 color: SignTalkColors.secondaryText,
               ),
-              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+            ),
+            prefixIconConstraints: const BoxConstraints(minWidth: 42),
+            suffixIcon: IconButton(
+              tooltip: _obscurePassword ? 'Show password' : 'Hide password',
+              icon: Icon(
+                _obscurePassword
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
+                size: 20,
+                color: SignTalkColors.secondaryText,
+              ),
+              onPressed: () =>
+                  setState(() => _obscurePassword = !_obscurePassword),
             ),
           ),
           validator: (v) =>
@@ -401,14 +443,20 @@ class _AuthScreenState extends State<AuthScreen> {
             hintText: 'Choose your User ID (e.g. suraj006)',
             prefixIcon: const Padding(
               padding: EdgeInsets.only(left: 14, right: 8),
-              child: Icon(Icons.alternate_email, size: 20, color: SignTalkColors.secondaryText),
+              child: Icon(
+                Icons.alternate_email,
+                size: 20,
+                color: SignTalkColors.secondaryText,
+              ),
             ),
             prefixIconConstraints: const BoxConstraints(minWidth: 42),
             suffixIcon: _isUserIdAvailable == null
                 ? null
                 : Icon(
                     _isUserIdAvailable! ? Icons.check_circle : Icons.cancel,
-                    color: _isUserIdAvailable! ? SignTalkColors.successGreen : SignTalkColors.callRed,
+                    color: _isUserIdAvailable!
+                        ? SignTalkColors.successGreen
+                        : SignTalkColors.callRed,
                     size: 20,
                   ),
           ),
@@ -448,12 +496,17 @@ class _AuthScreenState extends State<AuthScreen> {
             hintText: 'Enter your full name',
             prefixIcon: Padding(
               padding: EdgeInsets.only(left: 14, right: 8),
-              child: Icon(Icons.person_outline, size: 20, color: SignTalkColors.secondaryText),
+              child: Icon(
+                Icons.person_outline,
+                size: 20,
+                color: SignTalkColors.secondaryText,
+              ),
             ),
             prefixIconConstraints: BoxConstraints(minWidth: 42),
           ),
-          validator: (v) =>
-              (v == null || v.trim().isEmpty) ? 'Please enter your name.' : null,
+          validator: (v) => (v == null || v.trim().isEmpty)
+              ? 'Please enter your name.'
+              : null,
         ),
         const SizedBox(height: 14),
         _buildTextFieldLabel('Email Address (Optional)'),
@@ -464,7 +517,11 @@ class _AuthScreenState extends State<AuthScreen> {
             hintText: 'name@example.com',
             prefixIcon: Padding(
               padding: EdgeInsets.only(left: 14, right: 8),
-              child: Icon(Icons.mail_outline, size: 20, color: SignTalkColors.secondaryText),
+              child: Icon(
+                Icons.mail_outline,
+                size: 20,
+                color: SignTalkColors.secondaryText,
+              ),
             ),
             prefixIconConstraints: BoxConstraints(minWidth: 42),
           ),
@@ -476,12 +533,21 @@ class _AuthScreenState extends State<AuthScreen> {
           decoration: const InputDecoration(
             prefixIcon: Padding(
               padding: EdgeInsets.only(left: 14, right: 8),
-              child: Icon(Icons.accessibility_new_outlined, size: 20, color: SignTalkColors.secondaryText),
+              child: Icon(
+                Icons.accessibility_new_outlined,
+                size: 20,
+                color: SignTalkColors.secondaryText,
+              ),
             ),
             prefixIconConstraints: BoxConstraints(minWidth: 42),
           ),
           items: _personStatuses
-              .map((r) => DropdownMenuItem(value: r, child: Text(r, style: const TextStyle(fontSize: 13.5))))
+              .map(
+                (r) => DropdownMenuItem(
+                  value: r,
+                  child: Text(r, style: const TextStyle(fontSize: 13.5)),
+                ),
+              )
               .toList(),
           onChanged: (val) {
             if (val != null) setState(() => _selectedPersonStatus = val);
@@ -496,16 +562,26 @@ class _AuthScreenState extends State<AuthScreen> {
             hintText: 'Create a password',
             prefixIcon: const Padding(
               padding: EdgeInsets.only(left: 14, right: 8),
-              child: Icon(Icons.lock_outline, size: 20, color: SignTalkColors.secondaryText),
-            ),
-            prefixIconConstraints: const BoxConstraints(minWidth: 42),
-            suffixIcon: IconButton(
-              icon: Icon(
-                _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+              child: Icon(
+                Icons.lock_outline,
                 size: 20,
                 color: SignTalkColors.secondaryText,
               ),
-              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+            ),
+            prefixIconConstraints: const BoxConstraints(minWidth: 42),
+            suffixIcon: IconButton(
+              tooltip: _obscureConfirmPassword
+                  ? 'Show password'
+                  : 'Hide password',
+              icon: Icon(
+                _obscurePassword
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
+                size: 20,
+                color: SignTalkColors.secondaryText,
+              ),
+              onPressed: () =>
+                  setState(() => _obscurePassword = !_obscurePassword),
             ),
           ),
           validator: (v) {
@@ -523,16 +599,24 @@ class _AuthScreenState extends State<AuthScreen> {
             hintText: 'Re-enter your password',
             prefixIcon: const Padding(
               padding: EdgeInsets.only(left: 14, right: 8),
-              child: Icon(Icons.lock_clock_outlined, size: 20, color: SignTalkColors.secondaryText),
+              child: Icon(
+                Icons.lock_clock_outlined,
+                size: 20,
+                color: SignTalkColors.secondaryText,
+              ),
             ),
             prefixIconConstraints: const BoxConstraints(minWidth: 42),
             suffixIcon: IconButton(
               icon: Icon(
-                _obscureConfirmPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                _obscureConfirmPassword
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
                 size: 20,
                 color: SignTalkColors.secondaryText,
               ),
-              onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+              onPressed: () => setState(
+                () => _obscureConfirmPassword = !_obscureConfirmPassword,
+              ),
             ),
           ),
           validator: (v) {
@@ -570,24 +654,32 @@ class _AuthScreenState extends State<AuthScreen> {
           ? const SizedBox(
               width: 22,
               height: 22,
-              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+              child: CircularProgressIndicator(
+                color: Colors.white,
+                strokeWidth: 2.5,
+              ),
             )
           : Row(
               mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
-                  _mode == AuthMode.register ? Icons.person_add_alt_1 : Icons.login,
+                  _mode == AuthMode.register
+                      ? Icons.person_add_alt_1
+                      : Icons.login,
                   size: 20,
                 ),
                 const SizedBox(width: 8),
                 Flexible(
                   child: Text(
                     _mode == AuthMode.register
-                        ? 'Register'
+                        ? 'Create Account'
                         : 'Sign In to SignTalk',
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],
@@ -602,7 +694,11 @@ class _AuthScreenState extends State<AuthScreen> {
         minimumSize: const Size.fromHeight(44),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
-      icon: const Icon(Icons.flash_on, size: 18, color: SignTalkColors.primaryBlue),
+      icon: const Icon(
+        Icons.flash_on,
+        size: 18,
+        color: SignTalkColors.primaryBlue,
+      ),
       label: const Text(
         'Fill Demo Account (@demo_user)',
         overflow: TextOverflow.ellipsis,
@@ -617,7 +713,11 @@ class _AuthScreenState extends State<AuthScreen> {
         crossAxisAlignment: WrapCrossAlignment.center,
         alignment: WrapAlignment.center,
         children: [
-          const Icon(Icons.lock_outline, size: 14, color: SignTalkColors.secondaryText),
+          const Icon(
+            Icons.lock_outline,
+            size: 14,
+            color: SignTalkColors.secondaryText,
+          ),
           const SizedBox(width: 6),
           Text(
             'SignTalk Secure Session Authentication',
@@ -660,11 +760,244 @@ class _TabButton extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-              color: selected ? SignTalkColors.primaryBlue : SignTalkColors.secondaryText,
+              color: selected
+                  ? SignTalkColors.primaryBlue
+                  : SignTalkColors.secondaryText,
             ),
           ),
         ),
       ),
     );
   }
+}
+
+class _AuthHeroIllustration extends StatelessWidget {
+  const _AuthHeroIllustration({required this.height});
+
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: 'Illustration of two people communicating with sign language, speech, and text',
+      image: true,
+      child: SizedBox(
+        height: height,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(28),
+          child: Image.asset(
+            'assets/images/signtalk-auth-hero.png',
+            fit: BoxFit.cover,
+            semanticLabel: 'SignTalk illustration showing two people communicating with sign language, speech, and text',
+            errorBuilder: (context, error, stackTrace) => const DecoratedBox(
+              decoration: BoxDecoration(color: SignTalkColors.tintBlue),
+              child: Center(
+                child: Icon(
+                  Icons.diversity_3_rounded,
+                  size: 52,
+                  color: SignTalkColors.primaryBlue,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AuthHeroPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final scale = (size.width / 680).clamp(0.1, size.height / 240);
+    canvas.save();
+    canvas.translate(
+      (size.width - (680 * scale)) / 2,
+      (size.height - (240 * scale)) / 2,
+    );
+    canvas.scale(scale, scale);
+    final blue = Paint()..color = SignTalkColors.primaryBlue;
+    final navy = Paint()..color = const Color(0xFF2C2532);
+    final skin = Paint()..color = const Color(0xFFFFBD91);
+    final lightSkin = Paint()..color = const Color(0xFFFFD0AB);
+    final hair = Paint()..color = const Color(0xFF3A2430);
+    final pale = Paint()..color = const Color(0xFFEAF4FF);
+
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        const Rect.fromLTWH(8, 8, 664, 222),
+        const Radius.circular(32),
+      ),
+      Paint()..color = const Color(0xFFEAF5FF),
+    );
+    canvas.drawCircle(
+      const Offset(102, 73),
+      66,
+      Paint()..color = const Color(0xFFD7EBFF),
+    );
+    canvas.drawCircle(
+      const Offset(578, 99),
+      76,
+      Paint()..color = const Color(0xFFD7EBFF),
+    );
+    canvas.drawOval(
+      const Rect.fromLTWH(286, 28, 112, 112),
+      Paint()..color = const Color(0xFFCBE4FF),
+    );
+
+    _bubble(canvas, const Rect.fromLTWH(282, 34, 116, 62), pale.color);
+    _drawHand(canvas, const Offset(315, 50), blue);
+    _drawHand(canvas, const Offset(354, 50), blue);
+
+    _bubble(canvas, const Rect.fromLTWH(408, 106, 104, 58), Colors.white);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        const Rect.fromLTWH(423, 119, 28, 31),
+        const Radius.circular(5),
+      ),
+      blue,
+    );
+    final textPainter = TextPainter(
+      text: const TextSpan(
+        text: 'A',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 20,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    textPainter.paint(canvas, const Offset(431, 123));
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        const Rect.fromLTWH(462, 123, 35, 6),
+        const Radius.circular(4),
+      ),
+      Paint()..color = const Color(0xFF9CB2D4),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        const Rect.fromLTWH(462, 136, 27, 6),
+        const Radius.circular(4),
+      ),
+      Paint()..color = const Color(0xFF9CB2D4),
+    );
+
+    _bubble(canvas, const Rect.fromLTWH(516, 35, 62, 55), Colors.white);
+    canvas.drawCircle(
+      const Offset(547, 57),
+      12,
+      Paint()..color = SignTalkColors.tintBlue,
+    );
+    canvas.drawLine(
+      const Offset(547, 51),
+      const Offset(547, 66),
+      blue
+        ..strokeWidth = 4
+        ..strokeCap = StrokeCap.round,
+    );
+    canvas.drawArc(
+      const Rect.fromLTWH(540, 51, 14, 21),
+      0,
+      3.14,
+      false,
+      blue
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3,
+    );
+
+    canvas.drawOval(const Rect.fromLTWH(83, 71, 88, 91), skin);
+    canvas.drawOval(const Rect.fromLTWH(76, 62, 102, 55), hair);
+    canvas.drawPath(
+      Path()
+        ..moveTo(62, 151)
+        ..quadraticBezierTo(128, 119, 205, 157)
+        ..lineTo(218, 230)
+        ..lineTo(42, 230)
+        ..close(),
+      blue,
+    );
+    canvas.drawOval(const Rect.fromLTWH(103, 111, 9, 12), navy);
+    canvas.drawOval(const Rect.fromLTWH(143, 111, 9, 12), navy);
+    canvas.drawArc(
+      const Rect.fromLTWH(108, 122, 39, 27),
+      0,
+      3.14,
+      false,
+      navy
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4,
+    );
+    canvas.drawLine(
+      const Offset(137, 171),
+      const Offset(204, 127),
+      skin
+        ..strokeWidth = 15
+        ..strokeCap = StrokeCap.round,
+    );
+    canvas.drawLine(
+      const Offset(205, 127),
+      const Offset(215, 91),
+      skin
+        ..strokeWidth = 12
+        ..strokeCap = StrokeCap.round,
+    );
+    canvas.drawCircle(const Offset(216, 87), 7, skin);
+    canvas.drawLine(
+      const Offset(214, 91),
+      const Offset(228, 74),
+      skin
+        ..strokeWidth = 8
+        ..strokeCap = StrokeCap.round,
+    );
+
+    canvas.drawOval(const Rect.fromLTWH(494, 105, 79, 87), lightSkin);
+    canvas.drawOval(const Rect.fromLTWH(482, 95, 106, 65), hair);
+    canvas.drawPath(
+      Path()
+        ..moveTo(462, 171)
+        ..quadraticBezierTo(531, 135, 604, 178)
+        ..lineTo(628, 230)
+        ..lineTo(442, 230)
+        ..close(),
+      Paint()..color = const Color(0xFFFFF3E9),
+    );
+    canvas.drawOval(const Rect.fromLTWH(514, 145, 9, 12), navy);
+    canvas.drawOval(const Rect.fromLTWH(550, 145, 9, 12), navy);
+    canvas.drawArc(
+      const Rect.fromLTWH(516, 157, 37, 25),
+      0,
+      3.14,
+      false,
+      navy
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4,
+    );
+    canvas.restore();
+  }
+
+  void _bubble(Canvas canvas, Rect rect, Color color) {
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, const Radius.circular(18)),
+      Paint()..color = color,
+    );
+  }
+
+  void _drawHand(Canvas canvas, Offset origin, Paint paint) {
+    canvas.drawCircle(origin + const Offset(0, 20), 12, paint);
+    for (var index = 0; index < 4; index++) {
+      final x = origin.dx + index * 9 - 13;
+      canvas.drawLine(
+        Offset(x, origin.dy + 18),
+        Offset(x, origin.dy + (index == 1 ? -6 : 4)),
+        paint
+          ..strokeWidth = 6
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

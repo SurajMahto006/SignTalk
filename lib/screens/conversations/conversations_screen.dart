@@ -52,6 +52,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
 
   final List<ChatMessage> _messages = [];
   bool _speakAfterSend = true;
+  bool _loadedSpeakPreference = false;
   String? _translateHint;
   bool _pendingRecognizedSign = false;
   SpeechRecognitionService? _speechRecognition;
@@ -60,6 +61,11 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _speechRecognition ??= SignTalkScope.of(context).speechRecognition;
+    if (!_loadedSpeakPreference) {
+      _speakAfterSend = SignTalkScope.preferencesOf(context)
+          .spokenOutputEnabled;
+      _loadedSpeakPreference = true;
+    }
   }
 
   @override
@@ -89,8 +95,9 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     _speechSubs
       ..add(
         speech.finalTranscriptStream.listen((text) {
-          if (_mode != ConversationInputMode.speak || text.trim().isEmpty)
+          if (_mode != ConversationInputMode.speak || text.trim().isEmpty) {
             return;
+          }
           setState(() {
             _inputController.text = _inputController.text.isEmpty
                 ? text.trim()
@@ -358,7 +365,12 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
           dictating: _dictating,
           speakAfterSend: _speakAfterSend,
           controller: _inputController,
-          onSpeakAfterSendChanged: (v) => setState(() => _speakAfterSend = v),
+          onSpeakAfterSendChanged: (v) {
+            setState(() => _speakAfterSend = v);
+            unawaited(
+              SignTalkScope.preferencesOf(context).setSpokenOutputEnabled(v),
+            );
+          },
           onTextChanged: (v) => setState(() {
             _translateHint = _mode == ConversationInputMode.translate
                 ? TextToSignReference.hintForText(v)
@@ -401,39 +413,137 @@ class _ConversationsHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+      padding: const EdgeInsets.fromLTRB(14, 10, 12, 12),
       child: Row(
         children: [
-          IconButton(
-            onPressed: onBack,
-            icon: const Icon(Icons.arrow_back_ios_new, size: 20),
-            color: SignTalkColors.primaryText,
+          _HeaderIconButton(
+            icon: Icons.arrow_back_ios_new,
             tooltip: 'Back to Home',
+            onPressed: onBack,
           ),
+          const SizedBox(width: 12),
+          _ContactAvatar(name: contactName),
+          const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              contactName,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-                color: SignTalkColors.primaryText,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  contactName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: SignTalkColors.primaryText,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                const Row(
+                  children: [
+                    _OfflineDot(),
+                    SizedBox(width: 5),
+                    Text(
+                      'Offline',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: SignTalkColors.secondaryText,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-          IconButton(
+          _HeaderIconButton(
+            icon: Icons.videocam_rounded,
+            tooltip: 'Start video call',
             onPressed: onVideoCall,
-            icon: const Icon(Icons.videocam_outlined, size: 22),
-            color: SignTalkColors.primaryBlue,
-            tooltip: 'Video call prototype',
           ),
-          IconButton(
-            onPressed: onMore,
-            icon: const Icon(Icons.more_horiz, size: 22),
-            color: SignTalkColors.primaryText,
+          const SizedBox(width: 8),
+          _HeaderIconButton(
+            icon: Icons.more_vert_rounded,
             tooltip: 'Conversation options',
+            onPressed: onMore,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _HeaderIconButton extends StatelessWidget {
+  const _HeaderIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: SignTalkColors.blueTint,
+      shape: const CircleBorder(),
+      child: InkWell(
+        onTap: onPressed,
+        customBorder: const CircleBorder(),
+        child: SizedBox(
+          width: 46,
+          height: 46,
+          child: Tooltip(
+            message: tooltip,
+            child: Icon(icon, color: SignTalkColors.primaryBlue, size: 21),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ContactAvatar extends StatelessWidget {
+  const _ContactAvatar({required this.name});
+
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    final initials = name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty)
+        .take(2)
+        .map((word) => word[0].toUpperCase())
+        .join();
+    return CircleAvatar(
+      radius: 29,
+      backgroundColor: SignTalkColors.primaryBlue,
+      child: Text(
+        initials.isEmpty ? '?' : initials,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 17,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _OfflineDot extends StatelessWidget {
+  const _OfflineDot();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 8,
+      height: 8,
+      decoration: const BoxDecoration(
+        color: SignTalkColors.secondaryText,
+        shape: BoxShape.circle,
       ),
     );
   }
@@ -778,8 +888,15 @@ class _ComposerSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+      decoration: BoxDecoration(
+        color: SignTalkColors.card,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: SignTalkColors.border),
+        boxShadow: const [SignTalkColors.cardShadow],
+      ),
       child: Column(
         children: [
           Row(
@@ -816,6 +933,12 @@ class _ComposerSection extends StatelessWidget {
             color: Colors.transparent,
             child: SwitchListTile(
               contentPadding: EdgeInsets.zero,
+              dense: true,
+              activeThumbColor: SignTalkColors.primaryBlue,
+              secondary: const Icon(
+                Icons.volume_up_rounded,
+                color: SignTalkColors.primaryBlue,
+              ),
               title: const Text(
                 'Speak aloud after send',
                 style: TextStyle(fontSize: 13),
@@ -842,6 +965,10 @@ class _ComposerSection extends StatelessWidget {
                         'Text-to-sign glossary (type hello, thankyou…)',
                       _ => 'Type a message...',
                     },
+                    prefixIcon: const Icon(
+                      Icons.sentiment_satisfied_alt_outlined,
+                      color: SignTalkColors.secondaryText,
+                    ),
                     filled: true,
                     fillColor: SignTalkColors.card,
                     contentPadding: const EdgeInsets.symmetric(
@@ -881,9 +1008,9 @@ class _ComposerSection extends StatelessWidget {
                     width: 48,
                     height: 48,
                     child: Icon(
-                      Icons.chevron_right,
+                      Icons.send_rounded,
                       color: Colors.white,
-                      size: 26,
+                      size: 21,
                     ),
                   ),
                 ),
@@ -912,26 +1039,30 @@ class _ModePill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? SignTalkColors.tintBlue : SignTalkColors.card,
-      borderRadius: BorderRadius.circular(16),
+      color: selected ? SignTalkColors.primaryBlue : SignTalkColors.card,
+      borderRadius: BorderRadius.circular(999),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(999),
         child: Ink(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(999),
             border: Border.all(
               color: selected
-                  ? SignTalkColors.primaryBlue.withValues(alpha: 0.35)
+                  ? SignTalkColors.primaryBlue
                   : SignTalkColors.border.withValues(alpha: 0.8),
             ),
           ),
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+            padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 8),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, size: 20, color: SignTalkColors.primaryBlue),
+                Icon(
+                  icon,
+                  size: 19,
+                  color: selected ? Colors.white : SignTalkColors.primaryBlue,
+                ),
                 const SizedBox(width: 6),
                 Flexible(
                   child: Text(
@@ -940,7 +1071,9 @@ class _ModePill extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                      color: SignTalkColors.primaryText,
+                      color: selected
+                          ? Colors.white
+                          : SignTalkColors.primaryText,
                     ),
                   ),
                 ),
@@ -960,13 +1093,213 @@ class _EmptyConversation extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Text(
-          'No messages yet. Use Speech to Text or type here. Enable “Speak aloud after send” for the demo flow.',
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodyMedium,
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const _ConversationIllustration(),
+              const SizedBox(height: 10),
+              RichText(
+                textAlign: TextAlign.center,
+                text: const TextSpan(
+                  style: TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800,
+                    color: SignTalkColors.primaryText,
+                  ),
+                  children: [
+                    TextSpan(text: 'Start the '),
+                    TextSpan(
+                      text: 'Conversation',
+                      style: TextStyle(color: SignTalkColors.primaryBlue),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'No messages yet. Use Speech to Text or type here.\n'
+                'Enable “Speak aloud after send” for the demo flow.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: SignTalkColors.secondaryText,
+                  fontSize: 14,
+                  height: 1.45,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+class _ConversationIllustration extends StatelessWidget {
+  const _ConversationIllustration();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 205,
+      width: 300,
+      child: CustomPaint(
+        painter: _ConversationIllustrationPainter(),
+        child: const SizedBox.expand(),
+      ),
+    );
+  }
+}
+
+class _ConversationIllustrationPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final blue = Paint()..color = SignTalkColors.primaryBlue;
+    final dark = Paint()..color = const Color(0xFF3A2530);
+    final skin = Paint()..color = const Color(0xFFFFC49F);
+    final cream = Paint()..color = const Color(0xFFFFE6D3);
+    final hair = Paint()..color = const Color(0xFF2C1D2B);
+    final white = Paint()..color = Colors.white;
+
+    canvas.drawOval(
+      Rect.fromLTWH(25, 40, size.width - 50, size.height - 32),
+      Paint()..color = const Color(0xFFF0F6FF),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(102, 4, 96, 50),
+        const Radius.circular(14),
+      ),
+      Paint()..color = const Color(0xFFE7F0FF),
+    );
+    _drawHand(canvas, const Offset(132, 18), blue);
+    _drawHand(canvas, const Offset(165, 18), blue);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(164, 72, 92, 50),
+        const Radius.circular(14),
+      ),
+      white,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(174, 83, 24, 28),
+        const Radius.circular(5),
+      ),
+      blue,
+    );
+    final letterPainter = TextPainter(
+      text: const TextSpan(
+        text: 'A',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 18,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    letterPainter.paint(canvas, const Offset(181, 87));
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(205, 86, 38, 5),
+        const Radius.circular(4),
+      ),
+      Paint()..color = const Color(0xFFB8C2D4),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(205, 98, 29, 5),
+        const Radius.circular(4),
+      ),
+      Paint()..color = const Color(0xFFB8C2D4),
+    );
+
+    canvas.drawOval(Rect.fromLTWH(58, 73, 65, 66), skin);
+    canvas.drawOval(Rect.fromLTWH(53, 67, 75, 38), dark);
+    canvas.drawPath(
+      Path()
+        ..moveTo(48, 124)
+        ..quadraticBezierTo(85, 103, 130, 127)
+        ..lineTo(143, 199)
+        ..lineTo(39, 199)
+        ..close(),
+      blue,
+    );
+    canvas.drawOval(Rect.fromLTWH(76, 91, 8, 11), dark);
+    canvas.drawOval(Rect.fromLTWH(101, 91, 8, 11), dark);
+    canvas.drawArc(
+      Rect.fromLTWH(78, 98, 29, 22),
+      0,
+      3.14,
+      false,
+      Paint()
+        ..color = dark.color
+        ..strokeWidth = 3
+        ..style = PaintingStyle.stroke,
+    );
+    canvas.drawLine(
+      const Offset(92, 139),
+      const Offset(127, 113),
+      skin
+        ..strokeWidth = 12
+        ..strokeCap = StrokeCap.round,
+    );
+    canvas.drawLine(
+      const Offset(129, 111),
+      const Offset(131, 83),
+      skin
+        ..strokeWidth = 10
+        ..strokeCap = StrokeCap.round,
+    );
+    canvas.drawCircle(const Offset(131, 79), 6, skin);
+    canvas.drawLine(
+      const Offset(131, 80),
+      const Offset(137, 68),
+      skin
+        ..strokeWidth = 7
+        ..strokeCap = StrokeCap.round,
+    );
+
+    canvas.drawOval(Rect.fromLTWH(215, 106, 55, 61), skin);
+    canvas.drawOval(Rect.fromLTWH(209, 99, 67, 42), hair);
+    canvas.drawPath(
+      Path()
+        ..moveTo(209, 151)
+        ..quadraticBezierTo(242, 130, 277, 157)
+        ..lineTo(286, 199)
+        ..lineTo(199, 199)
+        ..close(),
+      cream,
+    );
+    canvas.drawOval(Rect.fromLTWH(226, 127, 7, 10), dark);
+    canvas.drawOval(Rect.fromLTWH(249, 127, 7, 10), dark);
+    canvas.drawArc(
+      Rect.fromLTWH(227, 134, 25, 18),
+      0,
+      3.14,
+      false,
+      Paint()
+        ..color = dark.color
+        ..strokeWidth = 3
+        ..style = PaintingStyle.stroke,
+    );
+  }
+
+  void _drawHand(Canvas canvas, Offset origin, Paint paint) {
+    canvas.drawCircle(origin + const Offset(0, 17), 10, paint);
+    for (var i = 0; i < 4; i++) {
+      canvas.drawLine(
+        origin + Offset(i * 7 - 10, 15),
+        origin + Offset(i * 7 - 10, i == 1 ? -1 : 5),
+        paint
+          ..strokeWidth = 5
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

@@ -70,7 +70,7 @@ void main() {
       // 7. Verify the four primary tabs.
       await tester.tap(find.text('Logs'));
       await tester.pumpAndSettle();
-      expect(find.text('No activity yet'), findsOneWidget);
+      expect(find.text('Your activity will appear here'), findsOneWidget);
 
       await tester.tap(find.text('Conversations'));
       await tester.pumpAndSettle();
