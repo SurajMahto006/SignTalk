@@ -97,6 +97,7 @@ class _MainShellState extends State<MainShell> {
         onSignToTextTap: _openConversation,
         onSpeechToTextTap: _openConversation,
         onOpenConversations: _openConversations,
+        onOpenLogs: () => _onTabSelected(1),
         onProfileTap: _openSettings,
       ),
       1 => LogsScreen(onOpenConversation: _openContactConversation),
