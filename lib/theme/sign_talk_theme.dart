@@ -67,35 +67,69 @@ abstract final class SignTalkTheme {
         onSurface: SignTalkColors.primaryText,
       ),
       textTheme: textTheme,
+      visualDensity: VisualDensity.standard,
       splashColor: SignTalkColors.primaryBlue.withValues(alpha: 0.08),
       highlightColor: SignTalkColors.primaryBlue.withValues(alpha: 0.05),
+      cardTheme: CardThemeData(
+        color: SignTalkColors.card,
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: const BorderSide(color: SignTalkColors.border),
+        ),
+      ),
+      dividerTheme: const DividerThemeData(
+        color: SignTalkColors.dividerLight,
+        thickness: 1,
+        space: 1,
+      ),
+      iconButtonTheme: IconButtonThemeData(
+        style: IconButton.styleFrom(
+          minimumSize: const Size(44, 44),
+          tapTargetSize: MaterialTapTargetSize.padded,
+        ),
+      ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: SignTalkColors.primaryBlue,
           foregroundColor: Colors.white,
           minimumSize: const Size(48, 48),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: SignTalkColors.primaryBlue,
           minimumSize: const Size(48, 48),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           side: const BorderSide(color: SignTalkColors.border),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: SignTalkColors.card,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 12,
+        ),
         border: inputBorder,
         enabledBorder: inputBorder,
         focusedBorder: inputBorder.copyWith(
-          borderSide: const BorderSide(color: SignTalkColors.primaryBlue, width: 1.5),
+          borderSide: const BorderSide(
+            color: SignTalkColors.primaryBlue,
+            width: 1.5,
+          ),
         ),
-        labelStyle: const TextStyle(color: SignTalkColors.secondaryText, fontSize: 13),
+        labelStyle: const TextStyle(
+          color: SignTalkColors.secondaryText,
+          fontSize: 13,
+        ),
       ),
     );
   }

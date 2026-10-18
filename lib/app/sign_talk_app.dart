@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../screens/auth/auth_screen.dart';
+import '../services/auth/auth_service.dart';
 import '../services/communication/conversation_draft.dart';
 import '../services/isl/isl_recognition_adapter.dart';
 import '../services/isl/isl_recognition_factory.dart';
+import '../services/logs/activity_log_service.dart';
 import '../services/media/camera_preview_service.dart';
 import '../services/permissions/device_permission_status.dart';
 import '../services/preferences/sign_talk_preferences.dart';
@@ -21,11 +24,13 @@ class SignTalkApp extends StatefulWidget {
 
 class _SignTalkAppState extends State<SignTalkApp> {
   final SignTalkPreferences _preferences = SignTalkPreferences.instance;
+  final AuthService _authService = AuthService.instance;
   final SpeechRecognitionService _speechRecognition = SpeechRecognitionService();
   final TextToSpeechService _textToSpeech = TextToSpeechService();
   final CameraPreviewService _cameraPreview = CameraPreviewService.create();
   final DevicePermissionStatus _permissionStatus = DevicePermissionStatus();
   final ConversationDraft _conversationDraft = ConversationDraft();
+  final ActivityLogService _activityLogs = ActivityLogService();
   late final SmoothedIslRecognitionService _islRecognition =
       SmoothedIslRecognitionService(createIslRecognitionAdapter());
 
@@ -33,6 +38,8 @@ class _SignTalkAppState extends State<SignTalkApp> {
   void initState() {
     super.initState();
     _preferences.load();
+    _authService.load();
+    _activityLogs.load();
   }
 
   @override
@@ -46,14 +53,21 @@ class _SignTalkAppState extends State<SignTalkApp> {
   Widget build(BuildContext context) {
     return SignTalkScope(
       preferences: _preferences,
+      authService: _authService,
       speechRecognition: _speechRecognition,
       textToSpeech: _textToSpeech,
       cameraPreview: _cameraPreview,
       permissionStatus: _permissionStatus,
       conversationDraft: _conversationDraft,
       islRecognition: _islRecognition,
+      activityLogs: _activityLogs,
       child: ListenableBuilder(
-        listenable: Listenable.merge([_preferences, _textToSpeech, _conversationDraft]),
+        listenable: Listenable.merge([
+          _preferences,
+          _authService,
+          _textToSpeech,
+          _conversationDraft,
+        ]),
         builder: (context, _) {
           return MaterialApp(
             title: 'SignTalk',
@@ -68,7 +82,9 @@ class _SignTalkAppState extends State<SignTalkApp> {
                 child: child!,
               );
             },
-            home: MainShell(permissionStatus: _permissionStatus),
+            home: _authService.isAuthenticated
+                ? MainShell(permissionStatus: _permissionStatus)
+                : const AuthScreen(),
           );
         },
       ),

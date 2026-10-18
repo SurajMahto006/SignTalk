@@ -291,6 +291,8 @@ class WebRtcCallService extends ChangeNotifier {
     if (!WebRtcCallConfig.pageIsSecureContext) {
       throw StateError(WebRtcCallConfig.secureContextHint);
     }
+    final requestedMicEnabled = micEnabled;
+    final requestedCameraEnabled = cameraEnabled;
     try {
       final stream = await navigator.mediaDevices.getUserMedia({
         'audio': true,
@@ -302,8 +304,14 @@ class WebRtcCallService extends ChangeNotifier {
       });
       _localStream = stream;
       _refreshLocalTrackFlags();
-      micEnabled = stream.getAudioTracks().every((t) => t.enabled);
-      cameraEnabled = stream.getVideoTracks().every((t) => t.enabled);
+      micEnabled = requestedMicEnabled;
+      cameraEnabled = requestedCameraEnabled;
+      for (final track in stream.getAudioTracks()) {
+        track.enabled = micEnabled;
+      }
+      for (final track in stream.getVideoTracks()) {
+        track.enabled = cameraEnabled;
+      }
       mediaAccessState = CallMediaAccessState.granted;
       _logMedia(
         'getUserMedia ok audio=${stream.getAudioTracks().length} '
@@ -721,6 +729,7 @@ class WebRtcCallService extends ChangeNotifier {
   }
 
   Future<void> setMicEnabled(bool enabled) async {
+    micEnabled = enabled;
     if (_localStream == null) {
       statusMessage = 'Microphone not active — join the call or tap “Check camera & mic” first.';
       notifyListeners();
@@ -731,7 +740,6 @@ class WebRtcCallService extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    micEnabled = enabled;
     for (final track in _localStream!.getAudioTracks()) {
       track.enabled = enabled;
     }
@@ -739,6 +747,7 @@ class WebRtcCallService extends ChangeNotifier {
   }
 
   Future<void> setCameraEnabled(bool enabled) async {
+    cameraEnabled = enabled;
     if (_localStream == null) {
       statusMessage = 'Camera not active — join the call or tap “Check camera & mic” first.';
       notifyListeners();
@@ -749,7 +758,6 @@ class WebRtcCallService extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    cameraEnabled = enabled;
     for (final track in _localStream!.getVideoTracks()) {
       track.enabled = enabled;
     }
@@ -791,6 +799,8 @@ class WebRtcCallService extends ChangeNotifier {
     _remoteStream = null;
     hasLocalAudio = false;
     hasLocalVideo = false;
+    micEnabled = true;
+    cameraEnabled = true;
     hasRemoteAudio = false;
     hasRemoteVideo = false;
     remoteTracksReceived = 0;

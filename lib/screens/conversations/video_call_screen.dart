@@ -21,8 +21,13 @@ import '../../theme/sign_talk_colors.dart';
 
 /// Live WebRTC video call with SignTalk assistance (STT/TTS). Requires signaling server.
 class VideoCallScreen extends StatefulWidget {
-  const VideoCallScreen({super.key, required this.onClose});
+  const VideoCallScreen({
+    super.key,
+    required this.contactName,
+    required this.onClose,
+  });
 
+  final String contactName;
   final VoidCallback onClose;
 
   @override
@@ -39,6 +44,8 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   bool _assistExpanded = false;
   bool _connectionDetailsExpanded = false;
   bool _connecting = false;
+  bool _closing = false;
+  bool _callWasLogged = false;
   SpeechRecognitionService? _speech;
   final List<StreamSubscription<dynamic>> _captionSubs = [];
   final _gestures = createGestureRecognizerService();
@@ -603,13 +610,35 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     }
   }
 
+  Future<void> _recordCallIfNeeded() async {
+    if (_callWasLogged || !_call.isActive) return;
+    _callWasLogged = true;
+    await SignTalkScope.of(context).activityLogs.addCall(
+      contactName: widget.contactName,
+      roomId: _roomController.text.trim(),
+    );
+  }
+
+  Future<void> _closeCall() async {
+    if (_closing) return;
+    _closing = true;
+    await _recordCallIfNeeded();
+    if (mounted) widget.onClose();
+  }
+
   Future<void> _endCall() async {
+    await _recordCallIfNeeded();
     _stopGesturePipeline();
+    _stopIslPipeline();
     await _stopCaptions();
     await _call.hangUp();
-    setState(() {
-      _remoteGestureCaption = null;
-    });
+    if (mounted) {
+      setState(() {
+        _remoteGestureCaption = null;
+        _remoteIslSentence = null;
+        _partnerSpeech = null;
+      });
+    }
   }
 
   Future<void> _startCaptions() async {
@@ -697,7 +726,8 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                 _VideoCallTopBar(
                   onDark: inCall,
                   assistExpanded: _assistExpanded,
-                  onClose: widget.onClose,
+                  contactName: widget.contactName,
+                  onClose: () => unawaited(_closeCall()),
                   onToggleAssist: () => setState(() => _assistExpanded = !_assistExpanded),
                 ),
                 Padding(
@@ -838,12 +868,14 @@ class _VideoCallTopBar extends StatelessWidget {
   const _VideoCallTopBar({
     required this.onDark,
     required this.assistExpanded,
+    required this.contactName,
     required this.onClose,
     required this.onToggleAssist,
   });
 
   final bool onDark;
   final bool assistExpanded;
+  final String contactName;
   final VoidCallback onClose;
   final VoidCallback onToggleAssist;
 
@@ -861,7 +893,7 @@ class _VideoCallTopBar extends StatelessWidget {
           ),
           Expanded(
             child: Text(
-              'Live video call',
+              contactName,
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: fg),
             ),

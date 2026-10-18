@@ -14,10 +14,12 @@ class SpeechToTextScreen extends StatefulWidget {
     super.key,
     required this.onBack,
     required this.onSendToConversations,
+    this.onOpenSettings,
   });
 
   final VoidCallback onBack;
   final void Function(String text) onSendToConversations;
+  final VoidCallback? onOpenSettings;
 
   @override
   State<SpeechToTextScreen> createState() => _SpeechToTextScreenState();
@@ -258,7 +260,7 @@ class _SpeechToTextScreenState extends State<SpeechToTextScreen> {
           children: [
             _ScreenHeader(
               onBack: widget.onBack,
-              onSettings: () => _showSnack('Open the Settings tab for speech preferences.'),
+              onSettings: widget.onOpenSettings ?? () => _showSnack('Open the Settings tab for speech preferences.'),
             ),
             const SizedBox(height: 4),
             Text(
@@ -431,7 +433,6 @@ class _MicrophoneCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final micEnabled = available && !paused;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: SignTalkColors.card,
@@ -449,7 +450,7 @@ class _MicrophoneCard extends StatelessWidget {
                 color: listening ? SignTalkColors.primaryBlue : SignTalkColors.tintBlue,
                 shape: const CircleBorder(),
                 child: InkWell(
-                  onTap: micEnabled || listening ? onPrimaryMic : null,
+                  onTap: onPrimaryMic,
                   customBorder: const CircleBorder(),
                   child: SizedBox(
                     width: 72,
