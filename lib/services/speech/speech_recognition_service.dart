@@ -98,10 +98,16 @@ class SpeechRecognitionService {
       );
       return;
     }
+
     if (_listening) return;
 
-    final hasPermission = await _speech.hasPermission;
-    _lastPermissionGranted = hasPermission;
+    try {
+      final hasPermission = await _speech.hasPermission;
+      _lastPermissionGranted = hasPermission;
+    } catch (_) {
+      // On Flutter web, speech_to_text may throw type 'Null' is not a 'bool' on hasPermission.
+      // _speech.listen() prompts for microphone permission directly if needed.
+    }
 
     try {
       final started = await _speech.listen(
@@ -118,11 +124,23 @@ class SpeechRecognitionService {
         _listeningController.add(true);
         _emitStatus('Listening…');
       } else {
+        _listening = false;
+        _listeningController.add(false);
         _emitError(
           'Could not start listening. Check microphone permission and try again.',
         );
       }
     } catch (e) {
+      final msg = e.toString();
+      if (msg.contains('already started') || msg.contains('InvalidStateError')) {
+        // Recognition is already active in the browser; keep listening flag true.
+        _listening = true;
+        _listeningController.add(true);
+        _emitStatus('Listening…');
+        return;
+      }
+      _listening = false;
+      _listeningController.add(false);
       _lastPermissionGranted = false;
       _emitError('Failed to start speech recognition: $e');
     }
@@ -130,9 +148,11 @@ class SpeechRecognitionService {
 
   Future<void> stopListening() async {
     if (!_listening) return;
-    await _speech.stop();
     _listening = false;
     _listeningController.add(false);
+    try {
+      await _speech.stop();
+    } catch (_) {}
     _emitStatus('Stopped');
   }
 
