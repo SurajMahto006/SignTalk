@@ -833,16 +833,18 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                   ),
                   onEnd: () => unawaited(_endCall()),
                 ),
-                _ConnectionDetailsSection(
-                  call: _call,
-                  connecting: _connecting,
-                  initiallyExpanded: _connectionDetailsExpanded,
-                  onExpansionChanged: (v) => setState(() => _connectionDetailsExpanded = v),
-                ),
-                _GestureDemoHelpSection(
-                  initiallyExpanded: _gestureHelpExpanded,
-                  onExpansionChanged: (v) => setState(() => _gestureHelpExpanded = v),
-                ),
+                if (!inCall || MediaQuery.sizeOf(context).height >= 700) ...[
+                  _ConnectionDetailsSection(
+                    call: _call,
+                    connecting: _connecting,
+                    initiallyExpanded: _connectionDetailsExpanded,
+                    onExpansionChanged: (v) => setState(() => _connectionDetailsExpanded = v),
+                  ),
+                  _GestureDemoHelpSection(
+                    initiallyExpanded: _gestureHelpExpanded,
+                    onExpansionChanged: (v) => setState(() => _gestureHelpExpanded = v),
+                  ),
+                ],
                 if (_assistExpanded)
                   _AssistancePanel(
                     controller: _assistController,

@@ -32,9 +32,10 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     final viewportWidth = MediaQuery.sizeOf(context).width;
-    final appWidth = viewportWidth < 390
+    // Phones stay full width. A fixed 520px frame is wider than most phones and clips the page.
+    final appWidth = viewportWidth < 700
         ? viewportWidth
-        : (viewportWidth < 760 ? 520.0 : 640.0);
+        : (viewportWidth < 1100 ? 720.0 : 840.0);
     return Scaffold(
       backgroundColor: SignTalkColors.background,
       body: SafeArea(
@@ -218,11 +219,11 @@ class _SignTalkBottomNav extends StatelessWidget {
         border: Border(top: BorderSide(color: SignTalkColors.border)),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+        padding: const EdgeInsets.fromLTRB(8, 6, 8, 10),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            _NavItem(
+            Expanded(
+              child: _NavItem(
               label: 'Home',
               icon: Icons.home,
               selectedIcon: Icons.home,
@@ -230,26 +231,33 @@ class _SignTalkBottomNav extends StatelessWidget {
               selected: selectedIndex == 0,
               onTap: () => onSelected(0),
             ),
-            _NavItem(
+            ),
+            Expanded(
+              child: _NavItem(
               label: 'Logs',
               icon: Icons.history_outlined,
               selectedIcon: Icons.history,
               selected: selectedIndex == 1,
               onTap: () => onSelected(1),
             ),
-            _NavItem(
+            ),
+            Expanded(
+              child: _NavItem(
               label: 'Conversations',
               icon: Icons.chat_bubble_outline,
               selectedIcon: Icons.chat_bubble,
               selected: selectedIndex == 2,
               onTap: () => onSelected(2),
             ),
-            _NavItem(
+            ),
+            Expanded(
+              child: _NavItem(
               label: 'Settings',
               icon: Icons.settings_outlined,
               selectedIcon: Icons.settings,
               selected: selectedIndex == 3,
               onTap: () => onSelected(3),
+            ),
             ),
           ],
         ),
@@ -288,7 +296,7 @@ class _NavItem extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(8),
         child: SizedBox(
-          width: 70,
+          width: double.infinity,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -301,8 +309,11 @@ class _NavItem extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 10,
+                  fontSize: 11,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                   color: color,
                 ),

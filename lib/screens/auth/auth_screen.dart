@@ -137,18 +137,30 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
-  void _useDemoAccount() {
-    _userIdController.text = 'demo_user';
-    _passwordController.text = 'SignTalk@123';
+  Future<void> _useDemoAccount() async {
+    _userIdController.text = AuthService.demoUserId;
+    _passwordController.text = AuthService.demoPassword;
     setState(() {
       _errorMessage = null;
       _mode = AuthMode.signIn;
+      _isLoading = true;
+    });
+    final result = await AuthService.instance.login(
+      userId: AuthService.demoUserId,
+      password: AuthService.demoPassword,
+    );
+    if (!mounted) return;
+    setState(() {
+      _isLoading = false;
+      if (!result.success) _errorMessage = result.message;
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final compact = MediaQuery.sizeOf(context).height < 700;
+    final phone = MediaQuery.sizeOf(context).width < 700;
+    final heroHeight = phone ? (compact ? 96.0 : 150.0) : (compact ? 160.0 : 235.0);
     return Scaffold(
       backgroundColor: SignTalkColors.background,
       body: SafeArea(
@@ -165,7 +177,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _AuthHeroIllustration(height: compact ? 40 : 235),
+                    _AuthHeroIllustration(height: heroHeight),
                     const SizedBox(height: 4),
                     _buildBrandHeader(),
                     SizedBox(height: compact ? 8 : 24),
@@ -702,7 +714,7 @@ class _AuthScreenState extends State<AuthScreen> {
         color: SignTalkColors.primaryBlue,
       ),
       label: const Text(
-        'Fill Demo Account (@demo_user)',
+        'Continue as demo (demo / demo)',
         overflow: TextOverflow.ellipsis,
         style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
       ),

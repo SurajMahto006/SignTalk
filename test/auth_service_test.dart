@@ -13,7 +13,7 @@ void main() {
   group('AuthService Unique User ID & Authentication Tests', () {
     test('Initializes with default demo_user account', () {
       final auth = AuthService.instance;
-      expect(auth.isUserIdAvailable('demo_user'), isFalse);
+      expect(auth.isUserIdAvailable('demo'), isFalse);
       expect(auth.isUserIdAvailable('new_unique_user'), isTrue);
     });
 
@@ -40,9 +40,8 @@ void main() {
     test('Rejects duplicate User ID during registration (case-insensitive)', () async {
       final auth = AuthService.instance;
 
-      // Try registering existing demo_user
       final result = await auth.register(
-        userId: 'DEMO_USER',
+        userId: 'DEMO',
         name: 'Imposter',
         password: 'Password123',
       );
@@ -77,8 +76,8 @@ void main() {
 
       // Correct login
       final okLogin = await auth.login(
-        userId: 'demo_user',
-        password: 'SignTalk@123',
+        userId: 'demo',
+        password: 'demo',
       );
       expect(okLogin.success, isTrue);
       expect(auth.isAuthenticated, isTrue);
@@ -89,7 +88,7 @@ void main() {
 
       // Wrong password
       final badLogin = await auth.login(
-        userId: 'demo_user',
+        userId: 'demo',
         password: 'WrongPassword',
       );
       expect(badLogin.success, isFalse);

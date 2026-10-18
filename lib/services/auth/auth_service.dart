@@ -16,10 +16,14 @@ class AuthResult {
 class AuthService extends ChangeNotifier {
   AuthService._() {
     _ensureDefaultDemoUser();
+    _currentUser = _usersByUserId[demoUserId];
   }
 
   static AuthService? _instance;
   static AuthService get instance => _instance ??= AuthService._();
+
+  static const demoUserId = 'demo';
+  static const demoPassword = 'demo';
 
   static const _keyUsersList = 'st_registered_users_v1';
   static const _keyUserCredentials = 'st_user_credentials_v1';
@@ -43,9 +47,13 @@ class AuthService extends ChangeNotifier {
       _loadUsersFromStorage();
       _ensureDefaultDemoUser();
 
-      final activeUserId = _prefs?.getString(_keyActiveSessionUserId);
-      if (activeUserId != null && _usersByUserId.containsKey(activeUserId.toLowerCase())) {
-        _currentUser = _usersByUserId[activeUserId.toLowerCase()];
+      await _persistUsers();
+      final activeUserId = _prefs?.getString(_keyActiveSessionUserId)?.toLowerCase();
+      if (activeUserId != null && _usersByUserId.containsKey(activeUserId)) {
+        _currentUser = _usersByUserId[activeUserId];
+      } else {
+        _currentUser = _usersByUserId[demoUserId];
+        await _prefs?.setString(_keyActiveSessionUserId, demoUserId);
       }
     } catch (e) {
       if (kDebugMode) debugPrint('[AuthService] Error loading auth state: $e');
@@ -83,20 +91,15 @@ class AuthService extends ChangeNotifier {
   }
 
   void _ensureDefaultDemoUser() {
-    const demoId = 'demo_user';
-    if (!_usersByUserId.containsKey(demoId)) {
-      final demoUser = AuthUser(
-        id: 'usr_demo_001',
-        userId: demoId,
-        name: 'Demo User',
-        email: 'demo@signtalk.org',
-        role: 'ISL Signer & Advocate',
-        createdAt: DateTime.now(),
-      );
-      _usersByUserId[demoId] = demoUser;
-      _passwordsByUserId[demoId] = 'SignTalk@123';
-      _persistUsers();
-    }
+    _usersByUserId[demoUserId] = AuthUser(
+      id: 'usr_demo_001',
+      userId: demoUserId,
+      name: 'Demo User',
+      email: 'demo@signtalk.org',
+      role: 'ISL Signer & Advocate',
+      createdAt: _usersByUserId[demoUserId]?.createdAt ?? DateTime.now(),
+    );
+    _passwordsByUserId[demoUserId] = demoPassword;
   }
 
   Future<void> _persistUsers() async {

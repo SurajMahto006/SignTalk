@@ -278,15 +278,18 @@ class _HeroCard extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
-        child: Stack(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final phone = constraints.maxWidth < 560;
+            return Stack(
           children: [
-            const Positioned(
-              right: -34,
-              bottom: -55,
-              child: _HeroIllustration(),
+            Positioned(
+              right: phone ? -70 : -34,
+              bottom: phone ? -80 : -55,
+              child: _HeroIllustration(compact: phone),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(22, 22, 150, 22),
+              padding: EdgeInsets.fromLTRB(22, 22, phone ? 22 : 150, 22),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -312,11 +315,11 @@ class _HeroCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  const Text(
+                  Text(
                     'Communication,\nwithout barriers.',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 30,
+                      fontSize: phone ? 28 : 30,
                       height: 1.06,
                       fontWeight: FontWeight.w800,
                       letterSpacing: -0.9,
@@ -349,6 +352,8 @@ class _HeroCard extends StatelessWidget {
               ),
             ),
           ],
+            );
+          },
         ),
       ),
     );
@@ -356,35 +361,39 @@ class _HeroCard extends StatelessWidget {
 }
 
 class _HeroIllustration extends StatelessWidget {
-  const _HeroIllustration();
+  const _HeroIllustration({this.compact = false});
+
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 205,
-      height: 205,
+      width: compact ? 160 : 205,
+      height: compact ? 160 : 205,
       child: Stack(
         alignment: Alignment.center,
         children: [
           Container(
-            width: 190,
-            height: 190,
+            width: compact ? 140 : 190,
+            height: compact ? 140 : 190,
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.14),
               shape: BoxShape.circle,
             ),
           ),
           const Icon(Icons.people_alt_rounded, size: 132, color: Colors.white),
-          Positioned(
-            top: 18,
-            right: 8,
-            child: _Bubble(icon: Icons.back_hand_rounded, label: 'Sign'),
-          ),
-          Positioned(
-            bottom: 25,
-            left: 4,
-            child: _Bubble(icon: Icons.chat_rounded, label: 'Hello'),
-          ),
+          if (!compact) ...[
+            const Positioned(
+              top: 18,
+              right: 8,
+              child: _Bubble(icon: Icons.back_hand_rounded, label: 'Sign'),
+            ),
+            const Positioned(
+              bottom: 25,
+              left: 4,
+              child: _Bubble(icon: Icons.chat_rounded, label: 'Hello'),
+            ),
+          ],
         ],
       ),
     );

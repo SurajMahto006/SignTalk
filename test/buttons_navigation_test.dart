@@ -22,14 +22,7 @@ void main() {
       await tester.pumpWidget(const SignTalkApp());
       await tester.pumpAndSettle();
 
-      // Authenticate using demo account to enter the application
-      expect(find.text('Fill Demo Account (@demo_user)'), findsOneWidget);
-      await tester.tap(find.text('Fill Demo Account (@demo_user)'));
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('Sign In to SignTalk'));
-      await tester.pumpAndSettle();
-
+      // The saved demo account is already signed in.
       // 1. Verify Home screen buttons
       expect(find.text('SignTalk'), findsOneWidget);
       expect(find.text('Sign to Text'), findsWidgets);

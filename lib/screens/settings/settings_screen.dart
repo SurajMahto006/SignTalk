@@ -41,7 +41,7 @@ class SettingsScreen extends StatelessWidget {
                       ),
                       SizedBox(height: 3),
                       Text(
-                        'Customize your SignTalk experience',
+                        'Saved demo sign-in: username demo, password demo',
                         style: TextStyle(
                           fontSize: 14,
                           color: SignTalkColors.secondaryText,
@@ -402,7 +402,7 @@ class SettingsScreen extends StatelessWidget {
       builder: (ctx) => AlertDialog(
         title: const Text('Log Out'),
         content: const Text(
-          'Are you sure you want to log out of SignTalk? You will need your User ID and password to sign back in.',
+          'Log out on this screen only. Opening SignTalk again enters the saved demo account: username demo, password demo.',
         ),
         actions: [
           TextButton(
