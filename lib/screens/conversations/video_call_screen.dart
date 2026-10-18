@@ -17,8 +17,13 @@ import '../../theme/sign_talk_colors.dart';
 
 /// Live WebRTC video call with SignTalk assistance (STT/TTS). Requires signaling server.
 class VideoCallScreen extends StatefulWidget {
-  const VideoCallScreen({super.key, required this.onClose});
+  const VideoCallScreen({
+    super.key,
+    required this.contactName,
+    required this.onClose,
+  });
 
+  final String contactName;
   final VoidCallback onClose;
 
   @override
@@ -33,7 +38,6 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   final _captions = SpeechTranscriptController();
   bool _captionsListening = false;
   bool _assistExpanded = false;
-  bool _connectionDetailsExpanded = false;
   bool _connecting = false;
   SpeechRecognitionService? _speech;
   final List<StreamSubscription<dynamic>> _captionSubs = [];
@@ -56,24 +60,30 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   String? _remoteDetectLatchedId;
   String? _lastRemoteDetectCaption;
   DateTime? _lastRemoteDetectAt;
-  bool _gestureHelpExpanded = false;
+  bool _callWasLogged = false;
+  bool _closing = false;
 
   @override
   void initState() {
     super.initState();
-    _signalUrlController = TextEditingController(text: WebRtcCallConfig.signalingUrlForPage());
+    _signalUrlController = TextEditingController(
+      text: WebRtcCallConfig.signalingUrlForPage(),
+    );
     _call.addListener(_syncGesturePipelineWithCall);
     _remoteGestureSub = _call.gestureCaptions.listen(_onRemoteGestureCaption);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || _closing) return;
       await SignTalkScope.of(context).cameraPreview.stop();
+      if (!mounted || _closing) return;
       await _call.ensureRenderers();
-      if (mounted) setState(() {});
+      if (mounted && !_closing) setState(() {});
       _syncGesturePipelineWithCall();
     });
     _captions.addListener(_syncCaptionsToField);
   }
 
   void _syncGesturePipelineWithCall() {
+    if (_closing) return;
     final localShould = _call.isActive && _call.hasLocalVideo;
     if (localShould && !_gesturePipelineActive) {
       unawaited(_startGesturePipeline());
@@ -90,27 +100,36 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   }
 
   Future<void> _startGesturePipeline() async {
+    if (_closing) return;
     if (_gesturePipelineActive) return;
     if (!_gestures.isSupported) {
+      if (!mounted || _closing) return;
       setState(() => _gestureStatus = 'Gestures: Chrome/web only');
       return;
     }
+    if (!mounted || _closing) return;
     setState(() => _gestureStatus = 'Loading gesture model…');
     final init = await _gestures.init();
-    if (!mounted) return;
+    if (!mounted || _closing) return;
     if (!init.ready) {
-      setState(() => _gestureStatus = 'Gesture model failed: ${init.error ?? 'unknown'}');
+      setState(
+        () =>
+            _gestureStatus = 'Gesture model failed: ${init.error ?? 'unknown'}',
+      );
       return;
     }
     GestureStartResult? start;
     String lastVideoId = '';
     for (var attempt = 0; attempt < 24; attempt++) {
-      if (!mounted || !_call.isActive) return;
+      if (!mounted || _closing || !_call.isActive) return;
       lastVideoId = webrtcLocalVideoElementId(_call.localRenderer);
       start = _gestures.startOnVideoElementId(lastVideoId);
       if (start.ok) break;
       if (attempt == 0 || attempt % 4 == 0) {
-        setState(() => _gestureStatus = 'Waiting for your camera preview… (${attempt + 1}/24)');
+        setState(
+          () => _gestureStatus =
+              'Waiting for your camera preview… (${attempt + 1}/24)',
+        );
       }
       await Future<void>.delayed(const Duration(milliseconds: 250));
     }
@@ -120,7 +139,11 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
             'Gesture camera hook failed: ${start?.error ?? lastVideoId}. Retrying…',
       );
       Future<void>.delayed(const Duration(seconds: 2), () {
-        if (mounted && _call.isActive && _call.hasLocalVideo && !_gesturePipelineActive) {
+        if (mounted &&
+            !_closing &&
+            _call.isActive &&
+            _call.hasLocalVideo &&
+            !_gesturePipelineActive) {
           unawaited(_startGesturePipeline());
         }
       });
@@ -128,8 +151,13 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     }
     _gesturePipelineActive = true;
     _gesturePollTimer?.cancel();
-    _gesturePollTimer = Timer.periodic(const Duration(milliseconds: 150), (_) => _pollLocalGesture());
-    setState(() => _gestureStatus = 'Detecting — show HELLO, YES, or STOP pose');
+    _gesturePollTimer = Timer.periodic(
+      const Duration(milliseconds: 150),
+      (_) => _pollLocalGesture(),
+    );
+    setState(
+      () => _gestureStatus = 'Detecting — show HELLO, YES, or STOP pose',
+    );
   }
 
   void _stopLocalGesturePipeline() {
@@ -137,7 +165,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _gesturePollTimer = null;
     _gestures.stop();
     _gesturePipelineActive = false;
-    if (mounted) {
+    if (mounted && !_closing) {
       setState(() {
         _gestureStatus = 'Gestures stopped';
         _localGestureCaption = null;
@@ -150,7 +178,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _remoteGesturePollTimer = null;
     _gestures.stopRemote();
     _remoteGesturePipelineActive = false;
-    if (mounted) {
+    if (mounted && !_closing) {
       setState(() => _remoteGestureCaption = null);
     }
   }
@@ -161,15 +189,17 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   }
 
   Future<void> _startRemoteGesturePipeline() async {
+    if (_closing) return;
     if (_remoteGesturePipelineActive) return;
     if (!_gestures.isSupported) return;
     final init = await _gestures.init();
-    if (!mounted || !init.ready) return;
+    if (!mounted || _closing || !init.ready) return;
 
     GestureStartResult? start;
     var lastVideoId = '';
     for (var attempt = 0; attempt < 24; attempt++) {
-      if (!mounted || !_call.isActive || !_call.hasRemoteVideo) return;
+      if (!mounted || _closing || !_call.isActive || !_call.hasRemoteVideo)
+        return;
       lastVideoId = webrtcLocalVideoElementId(_call.remoteRenderer);
       start = _gestures.startRemoteOnVideoElementId(lastVideoId);
       if (start.ok) break;
@@ -177,7 +207,11 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     }
     if (start == null || !start.ok) {
       Future<void>.delayed(const Duration(seconds: 2), () {
-        if (mounted && _call.isActive && _call.hasRemoteVideo && !_remoteGesturePipelineActive) {
+        if (mounted &&
+            !_closing &&
+            _call.isActive &&
+            _call.hasRemoteVideo &&
+            !_remoteGesturePipelineActive) {
           unawaited(_startRemoteGesturePipeline());
         }
       });
@@ -185,11 +219,14 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     }
     _remoteGesturePipelineActive = true;
     _remoteGesturePollTimer?.cancel();
-    _remoteGesturePollTimer =
-        Timer.periodic(const Duration(milliseconds: 150), (_) => _pollRemoteVideoGesture());
+    _remoteGesturePollTimer = Timer.periodic(
+      const Duration(milliseconds: 150),
+      (_) => _pollRemoteVideoGesture(),
+    );
   }
 
   void _pollRemoteVideoGesture() {
+    if (_closing) return;
     final det = _gestures.consumeRemoteLatest();
     if (det == null) return;
     if (det.status == 'tracking') {
@@ -201,7 +238,8 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
     final caption = GestureDemoLabels.captionForMediaPipeGesture(det.gesture);
     if (caption == null) return;
-    if (!_remoteDetectReleaseArmed && _remoteDetectLatchedId == det.gesture) return;
+    if (!_remoteDetectReleaseArmed && _remoteDetectLatchedId == det.gesture)
+      return;
 
     final now = DateTime.now();
     if (_lastRemoteDetectCaption == caption &&
@@ -217,17 +255,22 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   }
 
   void _pollLocalGesture() {
+    if (_closing) return;
     final det = _gestures.consumeLatest();
     if (det == null) return;
     if (det.status == 'error' && det.message != null) {
-      if (mounted) setState(() => _gestureStatus = 'Error — ${det.message}');
+      if (mounted && !_closing)
+        setState(() => _gestureStatus = 'Error — ${det.message}');
       return;
     }
     if (det.status == 'tracking') {
       _gestureReleaseArmed = true;
       _latchedGestureId = null;
-      if (mounted) {
-        setState(() => _gestureStatus = 'Detecting — open palm, thumb up, or closed fist');
+      if (mounted && !_closing) {
+        setState(
+          () => _gestureStatus =
+              'Detecting — open palm, thumb up, or closed fist',
+        );
       }
       return;
     }
@@ -235,9 +278,10 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
     final caption = GestureDemoLabels.captionForMediaPipeGesture(det.gesture);
     if (caption == null) {
-      if (mounted) {
+      if (mounted && !_closing) {
         setState(
-          () => _gestureStatus = 'Detecting — only HELLO / YES / STOP are sent in this demo',
+          () => _gestureStatus =
+              'Detecting — only HELLO / YES / STOP are sent in this demo',
         );
       }
       return;
@@ -258,7 +302,11 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       score: det.score,
     );
     if (!sent) {
-      if (mounted) setState(() => _gestureStatus = 'Error — signaling not joined (caption not sent)');
+      if (mounted && !_closing)
+        setState(
+          () => _gestureStatus =
+              'Error — signaling not joined (caption not sent)',
+        );
       return;
     }
 
@@ -266,7 +314,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _lastSentAt = now;
     _gestureReleaseArmed = false;
     _latchedGestureId = det.gesture;
-    if (mounted) {
+    if (mounted && !_closing) {
       setState(() {
         _localGestureCaption = caption;
         _gestureStatus = 'Gesture recognized — $caption';
@@ -276,13 +324,13 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   Future<void> _onRemoteGestureCaption(GestureCaptionMessage msg) async {
     final label = msg.label.trim();
-    if (label.isEmpty || !mounted) return;
+    if (label.isEmpty || !mounted || _closing) return;
     await _applyPartnerCaption(label);
   }
 
   /// Partner caption on the main video + speak the word only (HELLO / YES / STOP).
   Future<void> _applyPartnerCaption(String label) async {
-    if (!mounted) return;
+    if (!mounted || _closing) return;
     setState(() => _remoteGestureCaption = label);
     final now = DateTime.now();
     if (_lastSpokenRemoteLabel == label &&
@@ -301,7 +349,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
     final outcome = await tts.speak(label, enabled: true);
     if (outcome == SpeakOutcome.failed && kDebugMode) {
-      debugPrint('[SignTalk] Caption TTS failed for "$label" (caption still shown on screen).');
+      debugPrint(
+        '[SignTalk] Caption TTS failed for "$label" (caption still shown on screen).',
+      );
     }
   }
 
@@ -316,9 +366,6 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   @override
   void deactivate() {
-    _stopGesturePipeline();
-    unawaited(_stopCaptions());
-    unawaited(_call.hangUp());
     super.deactivate();
   }
 
@@ -353,6 +400,28 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     await _call.requestLocalMediaPreview();
     _connecting = false;
     if (mounted) setState(() {});
+  }
+
+  Future<void> _toggleMic() async {
+    if (_closing) return;
+    try {
+      await _call.setMicEnabled(!_call.micEnabled);
+    } catch (error) {
+      if (mounted && !_closing) {
+        _showSnack('Could not change microphone state: $error');
+      }
+    }
+  }
+
+  Future<void> _toggleCamera() async {
+    if (_closing) return;
+    try {
+      await _call.setCameraEnabled(!_call.cameraEnabled);
+    } catch (error) {
+      if (mounted && !_closing) {
+        _showSnack('Could not change camera state: $error');
+      }
+    }
   }
 
   Future<void> _hostCall() async {
@@ -395,13 +464,25 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     }
   }
 
-  Future<void> _endCall() async {
+  Future<void> _closeCall() async {
+    if (_closing) return;
+    _closing = true;
+    final scope = SignTalkScope.of(context);
+    widget.onClose();
+
+    if (_call.isActive && !_callWasLogged) {
+      _callWasLogged = true;
+      await scope.activityLogs.addCall(
+        contactName: widget.contactName,
+        roomId: _roomController.text.trim(),
+      );
+    }
+    _call.removeListener(_syncGesturePipelineWithCall);
+    await _remoteGestureSub?.cancel();
+    _remoteGestureSub = null;
     _stopGesturePipeline();
     await _stopCaptions();
     await _call.hangUp();
-    setState(() {
-      _remoteGestureCaption = null;
-    });
   }
 
   Future<void> _startCaptions() async {
@@ -433,7 +514,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _captionSubs.clear();
     await _speech?.stopListening();
     await _call.restoreMicAfterSpeechRecognition();
-    setState(() => _captionsListening = false);
+    if (mounted && !_closing) {
+      setState(() => _captionsListening = false);
+    }
   }
 
   Future<void> _speakAssistText() async {
@@ -471,8 +554,12 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     return ListenableBuilder(
       listenable: _call,
       builder: (context, _) {
-        final mediaConnected = _call.connectionState == CallConnectionState.connected;
-        final islStatus = SignTalkScope.of(context).islRecognition.rawAdapter.displayName;
+        final mediaConnected =
+            _call.connectionState == CallConnectionState.connected;
+        final islStatus = SignTalkScope.of(context)
+            .islRecognition
+            .rawAdapter
+            .displayName;
         final inCall = _call.isActive;
 
         return ColoredBox(
@@ -483,8 +570,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                 _VideoCallTopBar(
                   onDark: inCall,
                   assistExpanded: _assistExpanded,
-                  onClose: widget.onClose,
-                  onToggleAssist: () => setState(() => _assistExpanded = !_assistExpanded),
+                  onClose: () => unawaited(_closeCall()),
+                  onToggleAssist: () =>
+                      setState(() => _assistExpanded = !_assistExpanded),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
@@ -502,7 +590,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 11,
-                            color: inCall ? Colors.white60 : SignTalkColors.secondaryText,
+                            color: inCall
+                                ? Colors.white60
+                                : SignTalkColors.secondaryText,
                           ),
                         ),
                       ],
@@ -528,7 +618,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(16),
                               child: SizedBox(
-                                height: 200,
+                                height: 300,
                                 child: _CallVideoStack(
                                   call: _call,
                                   mediaConnected: mediaConnected,
@@ -560,23 +650,13 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                     ),
                   ),
                 _CallControls(
-                  enabled: _call.localMediaReady || _call.isActive,
+                  enabled: true,
                   micOn: _call.micEnabled,
                   cameraOn: _call.cameraEnabled,
                   onDark: inCall,
-                  onToggleMic: () => unawaited(_call.setMicEnabled(!_call.micEnabled)),
-                  onToggleCamera: () => unawaited(_call.setCameraEnabled(!_call.cameraEnabled)),
-                  onEnd: () => unawaited(_endCall()),
-                ),
-                _ConnectionDetailsSection(
-                  call: _call,
-                  connecting: _connecting,
-                  initiallyExpanded: _connectionDetailsExpanded,
-                  onExpansionChanged: (v) => setState(() => _connectionDetailsExpanded = v),
-                ),
-                _GestureDemoHelpSection(
-                  initiallyExpanded: _gestureHelpExpanded,
-                  onExpansionChanged: (v) => setState(() => _gestureHelpExpanded = v),
+                  onToggleMic: () => unawaited(_toggleMic()),
+                  onToggleCamera: () => unawaited(_toggleCamera()),
+                  onEnd: () => unawaited(_closeCall()),
                 ),
                 if (_assistExpanded)
                   _AssistancePanel(
@@ -626,12 +706,21 @@ class _VideoCallTopBar extends StatelessWidget {
             child: Text(
               'Live video call',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: fg),
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: fg,
+              ),
             ),
           ),
           IconButton(
             onPressed: onToggleAssist,
-            icon: Icon(assistExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_up, color: fg),
+            icon: Icon(
+              assistExpanded
+                  ? Icons.keyboard_arrow_down
+                  : Icons.keyboard_arrow_up,
+              color: fg,
+            ),
             tooltip: 'Assistance panel',
           ),
         ],
@@ -657,14 +746,21 @@ class _EssentialStatusLine extends StatelessWidget {
     final text = connecting ? 'Working…' : _friendlyStatus(call, error);
     final color = error != null
         ? SignTalkColors.callRed
-        : (onDark ? Colors.white.withValues(alpha: 0.85) : SignTalkColors.secondaryText);
+        : (onDark
+              ? Colors.white.withValues(alpha: 0.85)
+              : SignTalkColors.secondaryText);
 
     return Text(
       text,
       maxLines: 2,
       overflow: TextOverflow.ellipsis,
       textAlign: TextAlign.center,
-      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, height: 1.25, color: color),
+      style: TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w500,
+        height: 1.25,
+        color: color,
+      ),
     );
   }
 
@@ -728,24 +824,32 @@ class _CallVideoStack extends StatelessWidget {
                   objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
                 )
               : (showRemotePlaceholder
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Text(
-                          mediaConnected ? 'Waiting for remote video…' : 'Remote participant',
-                          style: const TextStyle(color: Colors.white70, fontSize: 13),
-                          textAlign: TextAlign.center,
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            mediaConnected
+                                ? 'Waiting for remote video…'
+                                : 'Remote participant',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
                         ),
-                      ),
-                    )
-                  : null),
+                      )
+                    : null),
         ),
         if (remoteCaption != null)
           Positioned(
             left: 8,
             right: 8,
             bottom: 8,
-            child: _GestureCaptionChip(text: remoteCaption!, tone: _CaptionTone.remote),
+            child: _GestureCaptionChip(
+              text: remoteCaption!,
+              tone: _CaptionTone.remote,
+            ),
           ),
         Positioned(
           right: 10,
@@ -755,7 +859,11 @@ class _CallVideoStack extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: Colors.white24, width: 1.5),
               boxShadow: const [
-                BoxShadow(color: Color(0x66000000), blurRadius: 8, offset: Offset(0, 2)),
+                BoxShadow(
+                  color: Color(0x66000000),
+                  blurRadius: 8,
+                  offset: Offset(0, 2),
+                ),
               ],
             ),
             child: ClipRRect(
@@ -771,7 +879,11 @@ class _CallVideoStack extends StatelessWidget {
                       child: call.localRenderer.srcObject != null
                           ? RTCVideoView(call.localRenderer, mirror: true)
                           : const Center(
-                              child: Icon(Icons.videocam_off, color: Colors.white54, size: 26),
+                              child: Icon(
+                                Icons.videocam_off,
+                                color: Colors.white54,
+                                size: 26,
+                              ),
                             ),
                     ),
                     if (localCaption != null)
@@ -821,7 +933,10 @@ class _GestureCaptionChip extends StatelessWidget {
         border: Border.all(color: Colors.white24),
       ),
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: compact ? 4 : 10, vertical: compact ? 3 : 6),
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 4 : 10,
+          vertical: compact ? 3 : 6,
+        ),
         child: Text(
           text,
           maxLines: compact ? 2 : 3,
@@ -863,7 +978,11 @@ class _ConnectionDetailsSection extends StatelessWidget {
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
         title: const Text(
           'Connection details',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: SignTalkColors.primaryText),
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: SignTalkColors.primaryText,
+          ),
         ),
         subtitle: Text(
           connecting ? 'Working…' : (call.statusMessage ?? 'Diagnostics'),
@@ -886,18 +1005,27 @@ class _ConnectionDetailsSection extends StatelessWidget {
                 label: _CallDiagnostics.accessLabel(call.mediaAccessState),
                 ok: call.mediaAccessState == CallMediaAccessState.granted,
               ),
-              _MediaChip(label: call.hasRemoteAudio ? 'Remote audio' : 'No remote audio', ok: call.hasRemoteAudio),
+              _MediaChip(
+                label: call.hasRemoteAudio ? 'Remote audio' : 'No remote audio',
+                ok: call.hasRemoteAudio,
+              ),
             ],
           ),
           if (call.mediaAccessDetail != null) ...[
             const SizedBox(height: 8),
-            Text(call.mediaAccessDetail!, style: Theme.of(context).textTheme.bodySmall),
+            Text(
+              call.mediaAccessDetail!,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
           ],
           if (!WebRtcCallConfig.pageIsSecureContext) ...[
             const SizedBox(height: 8),
             Text(
               WebRtcCallConfig.secureContextHint,
-              style: TextStyle(fontSize: 11, color: SignTalkColors.callRed.withValues(alpha: 0.9)),
+              style: TextStyle(
+                fontSize: 11,
+                color: SignTalkColors.callRed.withValues(alpha: 0.9),
+              ),
             ),
           ],
           const SizedBox(height: 8),
@@ -905,22 +1033,32 @@ class _ConnectionDetailsSection extends StatelessWidget {
             'Tracks — local: ${call.hasLocalVideo ? 1 : 0}v/${call.hasLocalAudio ? 1 : 0}a · '
             'remote: ${call.hasRemoteVideo ? 1 : 0}v/${call.hasRemoteAudio ? 1 : 0}a · '
             'remote events: ${call.remoteTracksReceived}',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 11),
+            style: Theme.of(context).textTheme.bodySmall
+                ?.copyWith(fontSize: 11),
           ),
           const SizedBox(height: 4),
           Text(
             'ICE: ${call.lastIceConnectionState} · peer: ${call.lastPeerConnectionState}',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 11),
+            style: Theme.of(context).textTheme.bodySmall
+                ?.copyWith(fontSize: 11),
           ),
           const SizedBox(height: 8),
           const Text(
             'Gesture captions use the signaling WebSocket (type gesture_caption) when a data channel is not configured.',
-            style: TextStyle(fontSize: 11, color: SignTalkColors.secondaryText, height: 1.35),
+            style: TextStyle(
+              fontSize: 11,
+              color: SignTalkColors.secondaryText,
+              height: 1.35,
+            ),
           ),
           const SizedBox(height: 4),
           const Text(
             'Run the signaling server on your PC (port 8765). Use ws://127.0.0.1:8765 on this device or your LAN IP / wss:// when the app is served over HTTPS. Allow inbound TCP 8765 on Private networks in Windows Firewall if needed.',
-            style: TextStyle(fontSize: 11, color: SignTalkColors.secondaryText, height: 1.35),
+            style: TextStyle(
+              fontSize: 11,
+              color: SignTalkColors.secondaryText,
+              height: 1.35,
+            ),
           ),
         ],
       ),
@@ -948,7 +1086,11 @@ class _GestureDemoHelpSection extends StatelessWidget {
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
         title: const Text(
           'Demo gestures (prototype)',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: SignTalkColors.primaryText),
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: SignTalkColors.primaryText,
+          ),
         ),
         subtitle: Text(
           GestureDemoLabels.prototypeDisclaimer,
@@ -958,22 +1100,32 @@ class _GestureDemoHelpSection extends StatelessWidget {
           for (final g in GestureDemoLabels.demoGestures) ...[
             Text(
               g.caption,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: SignTalkColors.primaryText),
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: SignTalkColors.primaryText,
+              ),
             ),
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: Text(g.poseHint, style: Theme.of(context).textTheme.bodySmall?.copyWith(height: 1.35)),
+              child: Text(
+                g.poseHint,
+                style: Theme.of(context).textTheme.bodySmall
+                    ?.copyWith(height: 1.35),
+              ),
             ),
           ],
           Text(
             'Your signs appear on your preview and are sent to your partner. Their signs show on your main video '
             '(and vice versa). Spoken output says the word only: HELLO, YES, or STOP.',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 11, height: 1.35),
+            style: Theme.of(context).textTheme.bodySmall
+                ?.copyWith(fontSize: 11, height: 1.35),
           ),
           const SizedBox(height: 6),
           Text(
             'After each caption, lower your hand briefly before repeating the same gesture.',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 11, height: 1.35),
+            style: Theme.of(context).textTheme.bodySmall
+                ?.copyWith(fontSize: 11, height: 1.35),
           ),
         ],
       ),
@@ -983,30 +1135,30 @@ class _GestureDemoHelpSection extends StatelessWidget {
 
 abstract final class _CallDiagnostics {
   static String signalingLabel(CallSignalingState s) => switch (s) {
-        CallSignalingState.joined => 'Signaling joined',
-        CallSignalingState.connecting => 'Signaling…',
-        CallSignalingState.disconnected => 'Signaling lost',
-        CallSignalingState.failed => 'Signaling failed',
-        _ => 'Signaling idle',
-      };
+    CallSignalingState.joined => 'Signaling joined',
+    CallSignalingState.connecting => 'Signaling…',
+    CallSignalingState.disconnected => 'Signaling lost',
+    CallSignalingState.failed => 'Signaling failed',
+    _ => 'Signaling idle',
+  };
 
   static String mediaPathLabel(CallMediaPathState s) => switch (s) {
-        CallMediaPathState.connected => 'Media connected',
-        CallMediaPathState.negotiating => 'Negotiating',
-        CallMediaPathState.preparingLocalMedia => 'Opening camera/mic',
-        CallMediaPathState.reconnecting => 'Reconnecting',
-        CallMediaPathState.failed => 'Media failed',
-        _ => 'Media idle',
-      };
+    CallMediaPathState.connected => 'Media connected',
+    CallMediaPathState.negotiating => 'Negotiating',
+    CallMediaPathState.preparingLocalMedia => 'Opening camera/mic',
+    CallMediaPathState.reconnecting => 'Reconnecting',
+    CallMediaPathState.failed => 'Media failed',
+    _ => 'Media idle',
+  };
 
   static String accessLabel(CallMediaAccessState s) => switch (s) {
-        CallMediaAccessState.granted => 'Permissions OK',
-        CallMediaAccessState.requesting => 'Requesting…',
-        CallMediaAccessState.denied => 'Permission denied',
-        CallMediaAccessState.unavailable => 'No device',
-        CallMediaAccessState.error => 'Media error',
-        _ => 'Media not checked',
-      };
+    CallMediaAccessState.granted => 'Permissions OK',
+    CallMediaAccessState.requesting => 'Requesting…',
+    CallMediaAccessState.denied => 'Permission denied',
+    CallMediaAccessState.unavailable => 'No device',
+    CallMediaAccessState.error => 'Media error',
+    _ => 'Media not checked',
+  };
 }
 
 class _MediaChip extends StatelessWidget {
@@ -1021,11 +1173,18 @@ class _MediaChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: ok ? SignTalkColors.tintBlue : SignTalkColors.card,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: ok ? SignTalkColors.primaryBlue.withValues(alpha: 0.4) : SignTalkColors.border),
+        border: Border.all(
+          color: ok
+              ? SignTalkColors.primaryBlue.withValues(alpha: 0.4)
+              : SignTalkColors.border,
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        child: Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w500)),
+        child: Text(
+          label,
+          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w500),
+        ),
       ),
     );
   }
@@ -1057,10 +1216,8 @@ class _LobbyPanel extends StatelessWidget {
           if (WebRtcCallConfig.needsSeparateSignalingTunnel) ...[
             Text(
               WebRtcCallConfig.tunnelSignalingSetupHint,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: SignTalkColors.primaryBlue,
-                    height: 1.35,
-                  ),
+              style: Theme.of(context).textTheme.bodySmall
+                  ?.copyWith(color: SignTalkColors.primaryBlue, height: 1.35),
             ),
             const SizedBox(height: 8),
           ],
@@ -1181,13 +1338,20 @@ class _RoundBtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final disabled = onTap == null;
-    final bg = color ??
+    final bg =
+        color ??
         (disabled
-            ? (onDark ? Colors.white12 : SignTalkColors.border.withValues(alpha: 0.5))
-            : (onDark ? Colors.white.withValues(alpha: 0.14) : SignTalkColors.card));
+            ? (onDark
+                  ? Colors.white12
+                  : SignTalkColors.border.withValues(alpha: 0.5))
+            : (onDark
+                  ? Colors.white.withValues(alpha: 0.14)
+                  : SignTalkColors.card));
     final iconColor = disabled
         ? SignTalkColors.secondaryText
-        : (color != null ? Colors.white : (onDark ? Colors.white : SignTalkColors.primaryText));
+        : (color != null
+              ? Colors.white
+              : (onDark ? Colors.white : SignTalkColors.primaryText));
     final labelColor = onDark ? Colors.white70 : SignTalkColors.secondaryText;
 
     return Semantics(
@@ -1211,7 +1375,11 @@ class _RoundBtn extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          Text(label, style: TextStyle(fontSize: 11, color: labelColor), textAlign: TextAlign.center),
+          Text(
+            label,
+            style: TextStyle(fontSize: 11, color: labelColor),
+            textAlign: TextAlign.center,
+          ),
         ],
       ),
     );
@@ -1249,8 +1417,14 @@ class _AssistancePanel extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('Assistance (optional)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-            Text('ISL: $islStatus', style: Theme.of(context).textTheme.bodySmall),
+            const Text(
+              'Assistance (optional)',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+            Text(
+              'ISL: $islStatus',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
             const SizedBox(height: 6),
             TextField(
               controller: controller,
@@ -1267,17 +1441,27 @@ class _AssistancePanel extends StatelessWidget {
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: captionsListening ? onStopCaptions : onStartCaptions,
-                    child: Text(captionsListening ? 'Stop captions' : 'Captions'),
+                    onPressed: captionsListening
+                        ? onStopCaptions
+                        : onStartCaptions,
+                    child: Text(
+                      captionsListening ? 'Stop captions' : 'Captions',
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: FilledButton(onPressed: onSpeak, child: const Text('Speak')),
+                  child: FilledButton(
+                    onPressed: onSpeak,
+                    child: const Text('Speak'),
+                  ),
                 ),
               ],
             ),
-            TextButton(onPressed: onTryIsl, child: const Text('ISL adapter status')),
+            TextButton(
+              onPressed: onTryIsl,
+              child: const Text('ISL adapter status'),
+            ),
           ],
         ),
       ),
