@@ -1,0 +1,56 @@
+# SignTalk Phase A — inference/test overlay (config.yaml unchanged).
+# NOT runnable until placeholders below are replaced and OpenHands deps are verified installed.
+#
+# Path resolution (SignTalk scripts unchanged):
+#   OPENHANDS_CONFIG  → absolute path to this file (for smoke test)
+#   OPENHANDS_CHECKPOINT → absolute path to .ckpt (verify_openhands_load.py / engine.py set cfg.pretrained)
+#
+# Example verified paths on this clone (replace placeholders with your absolute paths):
+#   split_file: C:/Users/Lenovo/Desktop/SignTalk/tools/isl-sidecar/openhands_assets/include_metadata/Train_Test_Split/test_include.csv
+#   checkpoint: C:/Users/Lenovo/Desktop/SignTalk/tools/isl-sidecar/openhands_assets/include_lstm/include/lstm/epoch=294-step=63719.ckpt
+#   root_dir:   <NOT IN REPO — INCLUDE Pose_Signs tree must be obtained separately>
+
+# OPTIONAL for SignTalk: scripts override cfg.pretrained from OPENHANDS_CHECKPOINT.
+# Required for upstream-only inference snippets per OpenHands docs.
+pretrained: "<UNVERIFIED_SET_ABSOLUTE_PATH_TO_CHECKPOINT>"
+
+data:
+    modality: "pose"
+
+    test_pipeline:
+        dataset:
+            _target_: openhands.datasets.isolated.INCLUDEDataset
+            split_file: "<UNVERIFIED_SET_ABSOLUTE_PATH_TO_test_include.csv>"
+            root_dir: "<UNVERIFIED_SET_ABSOLUTE_PATH_TO_INCLUDE_POSE_SIGNS>"
+            splits: "test"
+            modality: "pose"
+
+        transforms:
+            - PoseSelect:
+                preset: mediapipe_holistic_minimal_27
+            - CenterAndScaleNormalize:
+                reference_points_preset: shoulder_mediapipe_holistic_minimal_27
+
+        dataloader:
+            _target_: torch.utils.data.DataLoader
+            # SignTalk Phase A smoke test only (4 GB RAM): conservative, NOT an OpenHands requirement.
+            # Shipped valid_pipeline uses batch_size: 64, num_workers: 3 — restore later if eval needs throughput.
+            batch_size: 1
+            shuffle: false
+            num_workers: 0
+            pin_memory: true
+            drop_last: false
+
+model:
+    encoder:
+        type: pose-flattener
+        params:
+            num_points: 27
+    decoder:
+        type: rnn
+        params:
+            rnn_type: LSTM
+            hidden_size: 128
+            num_layers: 4
+            bidirectional: true
+            use_attention: true

@@ -1,0 +1,7 @@
+.git
+.dart_tool
+tools/include-reference
+tools/isl-sidecar
+tools/signaling-server/node_modules
+**/node_modules
+stitch_signtalk_accessible_ui_design

@@ -32,7 +32,7 @@ class _SignTalkAppState extends State<SignTalkApp> {
   final ConversationDraft _conversationDraft = ConversationDraft();
   final ActivityLogService _activityLogs = ActivityLogService();
   late final SmoothedIslRecognitionService _islRecognition =
-      SmoothedIslRecognitionService(DisconnectedIslRecognitionAdapter());
+      SmoothedIslRecognitionService(createIslRecognitionAdapter());
 
   @override
   void initState() {

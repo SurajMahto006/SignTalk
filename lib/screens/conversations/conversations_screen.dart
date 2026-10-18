@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../app/sign_talk_scope.dart';
 import '../../services/isl/text_to_sign_reference.dart';
@@ -24,6 +27,35 @@ class ChatMessage {
   final String body;
   final String timeLabel;
   final bool showDelivered;
+
+  Map<String, dynamic> toJson() => {
+        'kind': kind.name,
+        'body': body,
+        'timeLabel': timeLabel,
+        'showDelivered': showDelivered,
+      };
+
+  /// Returns `null` if [json] is missing required fields or has an unknown kind.
+  static ChatMessage? fromJson(Map<String, dynamic> json) {
+    try {
+      final kindName = json['kind'] as String?;
+      final body = json['body'] as String?;
+      final timeLabel = json['timeLabel'] as String?;
+      if (kindName == null || body == null || timeLabel == null) return null;
+      final kind = ChatMessageKind.values.firstWhere(
+        (k) => k.name == kindName,
+        orElse: () => throw FormatException('Unknown kind: $kindName'),
+      );
+      return ChatMessage(
+        kind: kind,
+        body: body,
+        timeLabel: timeLabel,
+        showDelivered: json['showDelivered'] as bool? ?? false,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
 }
 
 class ConversationsScreen extends StatefulWidget {
@@ -43,6 +75,8 @@ class ConversationsScreen extends StatefulWidget {
 }
 
 class _ConversationsScreenState extends State<ConversationsScreen> {
+  static const _kMessagesKey = 'st_chat_messages_v1';
+
   final _inputController = TextEditingController();
   final _scrollController = ScrollController();
 
@@ -56,6 +90,10 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   String? _translateHint;
   bool _pendingRecognizedSign = false;
   SpeechRecognitionService? _speechRecognition;
+
+  /// Completes once the saved history has been loaded from SharedPreferences.
+  /// Every save waits for this so an early send never overwrites stored history.
+  late final Future<void> _historyLoaded;
 
   @override
   void didChangeDependencies() {
@@ -71,10 +109,64 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   @override
   void initState() {
     super.initState();
+    _historyLoaded = _loadMessages();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _bindSpeechForComposer();
       _applyDraftFromScope();
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Persistence helpers
+  // ---------------------------------------------------------------------------
+
+  /// Reads messages from SharedPreferences and populates [_messages].
+  /// Silently ignores any corrupt or missing data.
+  Future<void> _loadMessages() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_kMessagesKey);
+      if (raw == null || raw.isEmpty) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return;
+      final loaded = <ChatMessage>[];
+      for (final item in decoded) {
+        if (item is Map<String, dynamic>) {
+          final msg = ChatMessage.fromJson(item);
+          if (msg != null) loaded.add(msg);
+        }
+      }
+      if (loaded.isNotEmpty && mounted) {
+        setState(() => _messages.addAll(loaded));
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('SignTalk: failed to load messages – $e');
+    }
+  }
+
+  /// Serialises [_messages] to JSON and writes to SharedPreferences.
+  /// Waits for [_historyLoaded] first, so a rapid first send cannot race
+  /// against the initial read and overwrite saved history.
+  Future<void> _saveMessages() async {
+    try {
+      await _historyLoaded;
+      final prefs = await SharedPreferences.getInstance();
+      final encoded = jsonEncode(_messages.map((m) => m.toJson()).toList());
+      await prefs.setString(_kMessagesKey, encoded);
+    } catch (e) {
+      if (kDebugMode) debugPrint('SignTalk: failed to save messages – $e');
+    }
+  }
+
+  /// Clears all messages from memory and from SharedPreferences.
+  Future<void> _clearHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kMessagesKey);
+    } catch (e) {
+      if (kDebugMode) debugPrint('SignTalk: failed to clear messages – $e');
+    }
+    if (mounted) setState(() => _messages.clear());
   }
 
   void _applyDraftFromScope() {
@@ -196,6 +288,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
       preview: text,
     );
     _scrollToBottom();
+    unawaited(_saveMessages());
 
     if (_speakAfterSend) {
       await _speakMessage(text);

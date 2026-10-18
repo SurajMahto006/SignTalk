@@ -46,4 +46,12 @@ void main() {
     );
     expect(url, 'ws://192.168.1.10:8765');
   });
+
+  test('deployed https host uses same-origin wss without port 8765', () {
+    final url = WebRtcCallConfig.signalingUrlForContext(
+      scheme: 'https',
+      host: 'signtalk.fly.dev',
+    );
+    expect(url, 'wss://signtalk.fly.dev');
+  });
 }

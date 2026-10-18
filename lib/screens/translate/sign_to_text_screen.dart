@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../app/sign_talk_scope.dart';
+import '../../services/isl/isl_live_recognition.dart';
 import '../../services/isl/text_to_sign_reference.dart';
 import '../../services/speech/text_to_speech_service.dart';
 import '../../theme/sign_talk_colors.dart';
@@ -37,6 +38,10 @@ class _SignToTextScreenState extends State<SignToTextScreen> {
   String? _recognitionStatus;
   String? _textToSignHint;
   bool _lastTextFromModel = false;
+  bool _liveIslActive = false;
+  Timer? _liveIslTimer;
+  bool _liveIslBusy = false;
+  final _islLive = IslLiveRecognition();
 
   bool get _hasText => _textController.text.trim().isNotEmpty;
 
@@ -54,14 +59,67 @@ class _SignToTextScreenState extends State<SignToTextScreen> {
 
   @override
   void deactivate() {
+    _stopLiveIsl();
     SignTalkScope.of(context).cameraPreview.stop();
     super.deactivate();
   }
 
   @override
   void dispose() {
+    _stopLiveIsl();
     _textController.dispose();
     super.dispose();
+  }
+
+  void _stopLiveIsl() {
+    _liveIslTimer?.cancel();
+    _liveIslTimer = null;
+    _liveIslActive = false;
+  }
+
+  void _toggleLiveIsl(bool on) {
+    if (on && !_cameraActive) {
+      _showSnack('Start the camera first.');
+      return;
+    }
+    if (!on) {
+      _stopLiveIsl();
+      SignTalkScope.of(context).islRecognition.resetSmoothing();
+      setState(() {});
+      return;
+    }
+    if (!_islLive.isSupported) {
+      _showSnack('Live ISL needs Flutter Web (Chrome).');
+      return;
+    }
+    _liveIslActive = true;
+    _liveIslTimer?.cancel();
+    _liveIslTimer = Timer.periodic(const Duration(milliseconds: 900), (_) => unawaited(_liveIslTick()));
+    setState(() => _recognitionStatus = 'Live ISL — hold an INCLUDE sign steady');
+    unawaited(_liveIslTick());
+  }
+
+  Future<void> _liveIslTick() async {
+    if (!_liveIslActive || _liveIslBusy || !_cameraActive) return;
+    _liveIslBusy = true;
+    final isl = SignTalkScope.of(context).islRecognition;
+    final result = await _islLive.recognizeFromVideo(
+      isl: isl,
+      videoElementId: 'signtalk-camera-preview',
+    );
+    if (!mounted) return;
+    _liveIslBusy = false;
+    if (result.isSuccess && result.label != null) {
+      setState(() {
+        _textController.text = result.label!;
+        _lastTextFromModel = true;
+        _recognitionStatus = 'Recognized (live ISL)';
+      });
+    } else if (result.uncertain) {
+      setState(() => _recognitionStatus = result.message ?? 'Detecting sign…');
+    } else if (result.message != null) {
+      setState(() => _recognitionStatus = result.message);
+    }
   }
 
   void _clearText() {
@@ -141,7 +199,8 @@ class _SignToTextScreenState extends State<SignToTextScreen> {
       _recognitionStatus = 'Checking recognition service…';
     });
     final isl = SignTalkScope.of(context).islRecognition;
-    final result = await isl.recognizeClip(jpegFrames: const []);
+    final clip = await _islLive.captureClip(videoElementId: 'signtalk-camera-preview');
+    final result = await isl.recognizeClip(jpegFrames: clip);
     if (!mounted) return;
     setState(() {
       _recognitionBusy = false;
@@ -254,11 +313,19 @@ class _SignToTextScreenState extends State<SignToTextScreen> {
         ),
         const SizedBox(height: 10),
         OutlinedButton.icon(
-          onPressed: _recognitionBusy ? null : () => unawaited(_tryRecognition()),
+          onPressed: _recognitionBusy || !_cameraActive ? null : () => unawaited(_tryRecognition()),
           icon: _recognitionBusy
               ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
               : const Icon(Icons.back_hand_outlined),
-          label: const Text('Try sign recognition (model adapter)'),
+          label: const Text('Recognize one sign (clip)'),
+        ),
+        const SizedBox(height: 8),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Live ISL recognition'),
+          subtitle: const Text('Polls INCLUDE sidecar while camera is on'),
+          value: _liveIslActive,
+          onChanged: _cameraActive ? _toggleLiveIsl : null,
         ),
         const SizedBox(height: 10),
         _ControlRow(

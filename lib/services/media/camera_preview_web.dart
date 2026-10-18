@@ -46,6 +46,7 @@ class _CameraPreviewWeb implements CameraPreviewService {
       _lastPermissionGranted = true;
 
       _video = web.HTMLVideoElement()
+        ..id = 'signtalk-camera-preview'
         ..autoplay = true
         ..muted = true
         ..playsInline = true

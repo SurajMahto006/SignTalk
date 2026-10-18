@@ -64,10 +64,20 @@ class WebRtcCallService extends ChangeNotifier {
 
   final StreamController<GestureCaptionMessage> _gestureCaptionController =
       StreamController<GestureCaptionMessage>.broadcast();
+  final StreamController<IslCaptionMessage> _islCaptionController =
+      StreamController<IslCaptionMessage>.broadcast();
+  final StreamController<SpeechCaptionMessage> _speechCaptionController =
+      StreamController<SpeechCaptionMessage>.broadcast();
 
   /// Remote peer gesture captions relayed over signaling WebSocket.
   Stream<GestureCaptionMessage> get gestureCaptions =>
       _gestureCaptionController.stream;
+
+  /// Remote peer ISL word / sentence updates relayed over signaling WebSocket.
+  Stream<IslCaptionMessage> get islCaptions => _islCaptionController.stream;
+
+  /// Remote peer speech-to-text, relayed so the signer can read it.
+  Stream<SpeechCaptionMessage> get speechCaptions => _speechCaptionController.stream;
 
   bool get isActive =>
       connectionState == CallConnectionState.connecting ||
@@ -626,6 +636,10 @@ class WebRtcCallService extends ChangeNotifier {
           );
         case 'gesture_caption':
           _handleGestureCaption(msg);
+        case 'isl_caption':
+          _handleIslCaption(msg);
+        case 'speech_caption':
+          _handleSpeechCaption(msg);
       }
     } catch (e) {
       _failSignaling('Bad signaling message: $e');
@@ -665,6 +679,62 @@ class WebRtcCallService extends ChangeNotifier {
       ),
     );
     notifyListeners();
+  }
+
+  bool sendIslCaption({
+    required String word,
+    required String sentence,
+    required double confidence,
+  }) {
+    if (!_signalingJoined || _participantId == null) return false;
+    _send({
+      'type': 'isl_caption',
+      'from': _participantId,
+      'word': word,
+      'sentence': sentence,
+      'confidence': confidence,
+    });
+    return true;
+  }
+
+  void _handleIslCaption(Map<String, dynamic> msg) {
+    final from = msg['from']?.toString();
+    if (from != null && from == _participantId) return;
+    final word = msg['word']?.toString() ?? '';
+    final sentence = msg['sentence']?.toString() ?? word;
+    if (word.isEmpty && sentence.isEmpty) return;
+    final confidence = (msg['confidence'] as num?)?.toDouble() ?? 0;
+    _islCaptionController.add(
+      IslCaptionMessage(
+        fromParticipantId: from,
+        word: word,
+        sentence: sentence,
+        confidence: confidence,
+      ),
+    );
+    notifyListeners();
+  }
+
+  bool sendSpeechCaption(String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty || !_signalingJoined || _participantId == null) return false;
+    final clipped = trimmed.length > 240 ? trimmed.substring(trimmed.length - 240) : trimmed;
+    _send({
+      'type': 'speech_caption',
+      'from': _participantId,
+      'text': clipped,
+    });
+    return true;
+  }
+
+  void _handleSpeechCaption(Map<String, dynamic> msg) {
+    final from = msg['from']?.toString();
+    if (from != null && from == _participantId) return;
+    final text = msg['text']?.toString().trim() ?? '';
+    if (text.isEmpty) return;
+    _speechCaptionController.add(
+      SpeechCaptionMessage(fromParticipantId: from, text: text),
+    );
   }
 
   void _send(Map<String, dynamic> message) {
@@ -777,6 +847,8 @@ class WebRtcCallService extends ChangeNotifier {
     unawaited(localRenderer.dispose());
     unawaited(remoteRenderer.dispose());
     unawaited(_gestureCaptionController.close());
+    unawaited(_islCaptionController.close());
+    unawaited(_speechCaptionController.close());
     super.dispose();
   }
 }
