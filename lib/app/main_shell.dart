@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'sign_talk_scope.dart';
+import '../screens/contacts/contacts_screen.dart';
 import '../screens/conversations/conversations_screen.dart';
 import '../screens/conversations/video_call_screen.dart';
 import '../screens/home/home_screen.dart';
@@ -51,6 +52,18 @@ class _MainShellState extends State<MainShell> {
                             contactName: _contactName,
                             onClose: () =>
                                 setState(() => _videoCallOpen = false),
+                          )
+                        : _activeTool == 'contacts'
+                        ? ContactsScreen(
+                            onBack: _closeTool,
+                            onOpenChat: (name) {
+                              _closeTool();
+                              _openContactConversation(name);
+                            },
+                            onOpenVideoCall: (name) {
+                              _closeTool();
+                              _openContactVideoCall(name);
+                            },
                           )
                         : _activeTool == 'sign'
                         ? SignToTextScreen(
@@ -107,6 +120,8 @@ class _MainShellState extends State<MainShell> {
 
   void _openSpeechToText() => setState(() => _activeTool = 'speech');
 
+  void _openContacts() => setState(() => _activeTool = 'contacts');
+
   void _closeTool() => setState(() => _activeTool = null);
 
   void _sendSignTextToConversation(
@@ -135,6 +150,14 @@ class _MainShellState extends State<MainShell> {
     _videoCallOpen = true;
   });
 
+  void _openContactVideoCall(String contactName) {
+    setState(() {
+      _activeTool = null;
+      _contactName = contactName;
+      _videoCallOpen = true;
+    });
+  }
+
   void _openContactConversation(String contactName) {
     setState(() {
       _contactName = contactName;
@@ -149,6 +172,7 @@ class _MainShellState extends State<MainShell> {
         onSignToTextTap: _openSignToText,
         onSpeechToTextTap: _openSpeechToText,
         onOpenConversations: _openConversations,
+        onOpenContacts: _openContacts,
         onOpenLogs: () => _onTabSelected(1),
         onProfileTap: _openSettings,
       ),

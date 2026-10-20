@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../screens/auth/auth_screen.dart';
 import '../services/auth/auth_service.dart';
 import '../services/communication/conversation_draft.dart';
+import '../services/contacts/contacts_service.dart';
 import '../services/isl/isl_recognition_adapter.dart';
 import '../services/logs/activity_log_service.dart';
 import '../services/media/camera_preview_service.dart';
@@ -24,6 +25,7 @@ class SignTalkApp extends StatefulWidget {
 class _SignTalkAppState extends State<SignTalkApp> {
   final SignTalkPreferences _preferences = SignTalkPreferences.instance;
   final AuthService _authService = AuthService.instance;
+  final ContactsService _contactsService = ContactsService();
   final SpeechRecognitionService _speechRecognition =
       SpeechRecognitionService();
   final TextToSpeechService _textToSpeech = TextToSpeechService();
@@ -40,12 +42,14 @@ class _SignTalkAppState extends State<SignTalkApp> {
     _preferences.load();
     _authService.load();
     _activityLogs.load();
+    _contactsService.load();
   }
 
   @override
   void dispose() {
     _speechRecognition.dispose();
     _cameraPreview.dispose();
+    _contactsService.dispose();
     super.dispose();
   }
 
@@ -54,6 +58,7 @@ class _SignTalkAppState extends State<SignTalkApp> {
     return SignTalkScope(
       preferences: _preferences,
       authService: _authService,
+      contactsService: _contactsService,
       speechRecognition: _speechRecognition,
       textToSpeech: _textToSpeech,
       cameraPreview: _cameraPreview,
@@ -67,6 +72,7 @@ class _SignTalkAppState extends State<SignTalkApp> {
           _authService,
           _textToSpeech,
           _conversationDraft,
+          _contactsService,
         ]),
         builder: (context, _) {
           return MaterialApp(

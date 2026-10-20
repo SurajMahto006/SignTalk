@@ -9,6 +9,7 @@ class HomeScreen extends StatelessWidget {
     required this.onSignToTextTap,
     required this.onSpeechToTextTap,
     required this.onOpenConversations,
+    this.onOpenContacts,
     this.onOpenLogs,
     this.onProfileTap,
   });
@@ -16,6 +17,7 @@ class HomeScreen extends StatelessWidget {
   final VoidCallback onSignToTextTap;
   final VoidCallback onSpeechToTextTap;
   final VoidCallback onOpenConversations;
+  final VoidCallback? onOpenContacts;
   final VoidCallback? onOpenLogs;
   final VoidCallback? onProfileTap;
 
@@ -100,7 +102,7 @@ class HomeScreen extends StatelessWidget {
             const SizedBox(height: 12),
             _QuickActions(
               wide: wide,
-              onContacts: onOpenConversations,
+              onContacts: onOpenContacts ?? onOpenConversations,
               onHistory: onOpenLogs ?? onOpenConversations,
               onLearn: onSignToTextTap,
               onSettings: onProfileTap ?? onOpenConversations,

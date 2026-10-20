@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/auth/auth_service.dart';
 import '../../theme/sign_talk_colors.dart';
+import '../../widgets/google_logo.dart';
 
 enum AuthMode { signIn, register }
 
@@ -19,6 +20,8 @@ class _AuthScreenState extends State<AuthScreen> {
   final _userIdController = TextEditingController();
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _otpController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
@@ -26,6 +29,7 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
+  bool _otpRequested = false;
   String? _errorMessage;
   String? _userIdStatusMessage;
   bool? _isUserIdAvailable;
@@ -44,6 +48,8 @@ class _AuthScreenState extends State<AuthScreen> {
     _userIdController.dispose();
     _nameController.dispose();
     _emailController.dispose();
+    _phoneController.dispose();
+    _otpController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
@@ -146,6 +152,23 @@ class _AuthScreenState extends State<AuthScreen> {
     });
   }
 
+  void _showAuthSetupMessage() {
+    setState(() {
+      _errorMessage =
+          'Firebase is required to use Google login and phone OTP. '
+          'Configure Firebase Authentication first.';
+    });
+  }
+
+  void _requestOtp() {
+    if (_phoneController.text.trim().isEmpty) {
+      setState(() => _errorMessage = 'Enter your phone number first.');
+      return;
+    }
+    setState(() => _otpRequested = true);
+    _showAuthSetupMessage();
+  }
+
   @override
   Widget build(BuildContext context) {
     final compact = MediaQuery.sizeOf(context).height < 700;
@@ -200,6 +223,8 @@ class _AuthScreenState extends State<AuthScreen> {
                             _buildSubmitButton(),
                             const SizedBox(height: 14),
                             _buildDemoAccountButton(),
+                            const SizedBox(height: 12),
+                            _buildGoogleButton(),
                             const SizedBox(height: 18),
                             _buildFooterNote(),
                           ],
@@ -527,6 +552,37 @@ class _AuthScreenState extends State<AuthScreen> {
           ),
         ),
         const SizedBox(height: 14),
+        _buildTextFieldLabel('Phone Number (OTP)'),
+        TextFormField(
+          controller: _phoneController,
+          keyboardType: TextInputType.phone,
+          decoration: InputDecoration(
+            hintText: '+91 98765 43210',
+            prefixIcon: const Icon(Icons.phone_outlined),
+            suffixIcon: TextButton(
+              onPressed: _isLoading ? null : _requestOtp,
+              child: const Text('Send OTP'),
+            ),
+          ),
+          validator: (v) => (v == null || v.trim().isEmpty)
+              ? 'Phone number is required.'
+              : null,
+        ),
+        if (_otpRequested) ...[
+          const SizedBox(height: 14),
+          _buildTextFieldLabel('OTP Verification'),
+          TextFormField(
+            controller: _otpController,
+            keyboardType: TextInputType.number,
+            maxLength: 6,
+            decoration: const InputDecoration(
+              hintText: 'Enter 6-digit OTP',
+              prefixIcon: Icon(Icons.verified_user_outlined),
+              counterText: '',
+            ),
+          ),
+        ],
+        const SizedBox(height: 14),
         _buildTextFieldLabel('Person Status'),
         DropdownButtonFormField<String>(
           value: _selectedPersonStatus,
@@ -684,6 +740,30 @@ class _AuthScreenState extends State<AuthScreen> {
                 ),
               ],
             ),
+    );
+  }
+
+  Widget _buildGoogleButton() {
+    return OutlinedButton.icon(
+      onPressed: _isLoading ? null : _showAuthSetupMessage,
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size.fromHeight(48),
+        backgroundColor: Colors.white,
+        foregroundColor: const Color(0xFF202124),
+        side: const BorderSide(color: Color(0xFFDADCE0), width: 1),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+      icon: const GoogleLogo(size: 20),
+      label: Text(
+        _mode == AuthMode.register
+            ? 'Register with Google'
+            : 'Continue with Google',
+        style: const TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: 15,
+          color: Color(0xFF202124),
+        ),
+      ),
     );
   }
 

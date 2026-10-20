@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/auth/auth_service.dart';
 import '../services/communication/conversation_draft.dart';
+import '../services/contacts/contacts_service.dart';
 import '../services/isl/isl_recognition_adapter.dart';
 import '../services/logs/activity_log_service.dart';
 import '../services/media/camera_preview_service.dart';
@@ -22,6 +23,7 @@ class SignTalkScope extends InheritedNotifier<SignTalkPreferences> {
     required this.conversationDraft,
     required this.islRecognition,
     required this.activityLogs,
+    this.contactsService,
     required super.child,
   }) : super(notifier: preferences);
 
@@ -33,6 +35,7 @@ class SignTalkScope extends InheritedNotifier<SignTalkPreferences> {
   final ConversationDraft conversationDraft;
   final SmoothedIslRecognitionService islRecognition;
   final ActivityLogService activityLogs;
+  final ContactsService? contactsService;
 
   static SignTalkScope of(BuildContext context) {
     final scope = context.dependOnInheritedWidgetOfExactType<SignTalkScope>();
@@ -43,4 +46,7 @@ class SignTalkScope extends InheritedNotifier<SignTalkPreferences> {
   static SignTalkPreferences preferencesOf(BuildContext context) =>
       of(context).notifier!;
   static AuthService authOf(BuildContext context) => of(context).authService;
+  static ContactsService contactsOf(BuildContext context) =>
+      of(context).contactsService ?? ContactsService();
 }
+
