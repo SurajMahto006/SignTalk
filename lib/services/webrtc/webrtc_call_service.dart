@@ -17,7 +17,8 @@ enum CallConnectionState { idle, connecting, connected, failed, ended }
 class WebRtcCallService extends ChangeNotifier {
   WebRtcCallService();
 
-  static String get defaultSignalingUrl => WebRtcCallConfig.signalingUrlForPage();
+  static String get defaultSignalingUrl =>
+      WebRtcCallConfig.signalingUrlForPage();
 
   static final _idRandom = Random();
 
@@ -69,7 +70,8 @@ class WebRtcCallService extends ChangeNotifier {
       StreamController<SpeechCaptionMessage>.broadcast();
 
   /// Remote peer gesture captions relayed over signaling WebSocket.
-  Stream<GestureCaptionMessage> get gestureCaptions => _gestureCaptionController.stream;
+  Stream<GestureCaptionMessage> get gestureCaptions =>
+      _gestureCaptionController.stream;
 
   /// Remote peer ISL word / sentence updates relayed over signaling WebSocket.
   Stream<IslCaptionMessage> get islCaptions => _islCaptionController.stream;
@@ -84,8 +86,8 @@ class WebRtcCallService extends ChangeNotifier {
   bool get localMediaReady => _localStream != null;
 
   Map<String, dynamic> get rtcConfiguration => {
-        'iceServers': WebRtcCallConfig.iceServers(),
-      };
+    'iceServers': WebRtcCallConfig.iceServers(),
+  };
 
   Future<void> ensureRenderers() async {
     if (_renderersReady) return;
@@ -152,7 +154,9 @@ class WebRtcCallService extends ChangeNotifier {
     try {
       await ensureRenderers();
       final uri = Uri.parse(trimmedUrl);
-      _logSignaling('connect uri=$uri room=$_roomId host=$asHost id=$_participantId');
+      _logSignaling(
+        'connect uri=$uri room=$_roomId host=$asHost id=$_participantId',
+      );
       _channel = WebSocketChannel.connect(uri);
       try {
         await _channel!.ready;
@@ -177,14 +181,18 @@ class WebRtcCallService extends ChangeNotifier {
           if (session != _signalingGeneration) return;
           if (connectionState == CallConnectionState.ended) return;
           signalingState = CallSignalingState.disconnected;
-          final detail = _formatCloseDetail(_channel?.closeCode, _channel?.closeReason);
+          final detail = _formatCloseDetail(
+            _channel?.closeCode,
+            _channel?.closeReason,
+          );
           if (!_signalingJoined) {
             _failSignaling(
               'Signaling closed before joining$detail. '
               'Use your PC LAN IP in the signaling URL on the phone.',
             );
           } else {
-            statusMessage = 'Signaling disconnected$detail — you can leave and rejoin.';
+            statusMessage =
+                'Signaling disconnected$detail — you can leave and rejoin.';
             mediaPathState = CallMediaPathState.reconnecting;
             notifyListeners();
           }
@@ -291,6 +299,8 @@ class WebRtcCallService extends ChangeNotifier {
     if (!WebRtcCallConfig.pageIsSecureContext) {
       throw StateError(WebRtcCallConfig.secureContextHint);
     }
+    final requestedMicEnabled = micEnabled;
+    final requestedCameraEnabled = cameraEnabled;
     try {
       final stream = await navigator.mediaDevices.getUserMedia({
         'audio': true,
@@ -302,8 +312,14 @@ class WebRtcCallService extends ChangeNotifier {
       });
       _localStream = stream;
       _refreshLocalTrackFlags();
-      micEnabled = stream.getAudioTracks().every((t) => t.enabled);
-      cameraEnabled = stream.getVideoTracks().every((t) => t.enabled);
+      micEnabled = requestedMicEnabled;
+      cameraEnabled = requestedCameraEnabled;
+      for (final track in stream.getAudioTracks()) {
+        track.enabled = micEnabled;
+      }
+      for (final track in stream.getVideoTracks()) {
+        track.enabled = cameraEnabled;
+      }
       mediaAccessState = CallMediaAccessState.granted;
       _logMedia(
         'getUserMedia ok audio=${stream.getAudioTracks().length} '
@@ -337,10 +353,11 @@ class WebRtcCallService extends ChangeNotifier {
 
   void _setMediaAccessError(Object e) {
     final text = e.toString().toLowerCase();
-    if (text.contains('notallowed') || text.contains('permission') || text.contains('denied')) {
+    if (text.contains('notallowed') ||
+        text.contains('permission') ||
+        text.contains('denied')) {
       mediaAccessState = CallMediaAccessState.denied;
-      mediaAccessDetail =
-          'Permission denied. In Chrome: tap the lock icon → Site settings → allow Camera and Microphone, then retry.';
+      mediaAccessDetail = 'Permission denied. In Chrome: tap the lock icon → Site settings → allow Camera and Microphone, then retry.';
     } else if (text.contains('notfound') || text.contains('devicesnotfound')) {
       mediaAccessState = CallMediaAccessState.unavailable;
       mediaAccessDetail = 'No camera or microphone found on this device.';
@@ -375,7 +392,9 @@ class WebRtcCallService extends ChangeNotifier {
           statusMessage = 'Connection interrupted — attempting recovery…';
           notifyListeners();
         case RTCIceConnectionState.RTCIceConnectionStateFailed:
-          _failMedia('ICE connection failed — try same Wi‑Fi or configure TURN.');
+          _failMedia(
+            'ICE connection failed — try same Wi‑Fi or configure TURN.',
+          );
         default:
           statusMessage = 'ICE: $state';
           notifyListeners();
@@ -386,7 +405,8 @@ class WebRtcCallService extends ChangeNotifier {
       _logMedia('connectionState=$state');
       if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
         _failMedia('Peer connection failed');
-      } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+      } else if (state ==
+          RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
         _maybeMarkConnected('Peer $state');
       } else {
         statusMessage = 'Peer: $state';
@@ -404,18 +424,23 @@ class WebRtcCallService extends ChangeNotifier {
     _clearNegotiationTimeout();
     connectionState = CallConnectionState.connected;
     mediaPathState = CallMediaPathState.connected;
-    statusMessage = 'Connected — audio and video active when tracks are present.';
+    statusMessage =
+        'Connected — audio and video active when tracks are present.';
     notifyListeners();
   }
 
   Future<void> _onRemoteTrack(RTCTrackEvent event) async {
-    _logMedia('onTrack streams=${event.streams.length} kind=${event.track.kind}');
+    _logMedia(
+      'onTrack streams=${event.streams.length} kind=${event.track.kind}',
+    );
     event.track.enabled = true;
     MediaStream? stream;
     if (event.streams.isNotEmpty) {
       stream = event.streams.first;
     } else {
-      _remoteStream ??= await createLocalMediaStream('remote-${_roomId ?? 'call'}');
+      _remoteStream ??= await createLocalMediaStream(
+        'remote-${_roomId ?? 'call'}',
+      );
       await _remoteStream!.addTrack(event.track);
       stream = _remoteStream;
     }
@@ -550,7 +575,9 @@ class WebRtcCallService extends ChangeNotifier {
 
   Future<void> _flushIceCandidates() async {
     final result = await _iceBuffer.flush(_applyIceCandidateImmediate);
-    _logMedia('ice flush applied=${result.applied} requeued=${result.requeued}');
+    _logMedia(
+      'ice flush applied=${result.applied} requeued=${result.requeued}',
+    );
   }
 
   Future<void> _applyIceCandidateImmediate(Map<String, dynamic> candMap) async {
@@ -591,7 +618,8 @@ class WebRtcCallService extends ChangeNotifier {
             await _createAndSendOffer();
           }
         case 'peer_left':
-          peersInRoom = (msg['peers'] as num?)?.toInt() ?? max(0, peersInRoom - 1);
+          peersInRoom =
+              (msg['peers'] as num?)?.toInt() ?? max(0, peersInRoom - 1);
           await _prepareForPeerRejoin();
         case 'error':
           _failSignaling(msg['message']?.toString() ?? 'Signaling error');
@@ -603,7 +631,9 @@ class WebRtcCallService extends ChangeNotifier {
         case 'answer':
           await _handleAnswer(Map<String, dynamic>.from(msg['sdp'] as Map));
         case 'candidate':
-          await _handleCandidate(Map<String, dynamic>.from(msg['candidate'] as Map));
+          await _handleCandidate(
+            Map<String, dynamic>.from(msg['candidate'] as Map),
+          );
         case 'gesture_caption':
           _handleGestureCaption(msg);
         case 'isl_caption':
@@ -721,6 +751,7 @@ class WebRtcCallService extends ChangeNotifier {
   }
 
   Future<void> setMicEnabled(bool enabled) async {
+    micEnabled = enabled;
     if (_localStream == null) {
       statusMessage = 'Microphone not active — join the call or tap “Check camera & mic” first.';
       notifyListeners();
@@ -731,7 +762,6 @@ class WebRtcCallService extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    micEnabled = enabled;
     for (final track in _localStream!.getAudioTracks()) {
       track.enabled = enabled;
     }
@@ -739,6 +769,7 @@ class WebRtcCallService extends ChangeNotifier {
   }
 
   Future<void> setCameraEnabled(bool enabled) async {
+    cameraEnabled = enabled;
     if (_localStream == null) {
       statusMessage = 'Camera not active — join the call or tap “Check camera & mic” first.';
       notifyListeners();
@@ -749,7 +780,6 @@ class WebRtcCallService extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    cameraEnabled = enabled;
     for (final track in _localStream!.getVideoTracks()) {
       track.enabled = enabled;
     }
@@ -791,6 +821,8 @@ class WebRtcCallService extends ChangeNotifier {
     _remoteStream = null;
     hasLocalAudio = false;
     hasLocalVideo = false;
+    micEnabled = true;
+    cameraEnabled = true;
     hasRemoteAudio = false;
     hasRemoteVideo = false;
     remoteTracksReceived = 0;

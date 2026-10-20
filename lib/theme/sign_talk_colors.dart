@@ -2,24 +2,26 @@ import 'package:flutter/material.dart';
 
 abstract final class SignTalkColors {
   static const primaryBlue = Color(0xFF007AFF);
-  static const background = Color(0xFFF5F5F7);
+  static const background = Color(0xFFF5F7FB);
   static const primaryText = Color(0xFF1D1D1F);
-  static const secondaryText = Color(0xFF6E6E73);
-  static const border = Color(0xFFE5E5EA);
-  static const speechPurple = Color(0xFF6842ED);
-  static const speechPurpleBg = Color(0xFFECE7FE);
+  static const secondaryText = Color(0xFF667085);
+  static const border = Color(0xFFE4E9F2);
+  static const speechPurple = Color(0xFF7456E8);
+  static const speechPurpleBg = Color(0xFFF0EDFF);
   static const card = Colors.white;
-  static const chevron = Color(0xFF9CA3AF);
-  static const blueTint = Color(0xFFEFF6FF);
-  static const tintBlue = Color(0xFFEDF5FF);
-  static const tintBlueBorder = Color(0xFFD5E6FB);
+  static const chevron = Color(0xFF98A2B3);
+  static const blueTint = Color(0xFFEEF4FF);
+  static const tintBlue = Color(0xFFEAF2FF);
+  static const tintBlueBorder = Color(0xFFCFE0FF);
+  static const purpleTint = Color(0xFFF0EDFF);
+  static const greenTint = Color(0xFFE5FAF0);
   static const successGreen = Color(0xFF34C759);
   static const callRed = Color(0xFFFF3B30);
-  static const dividerLight = Color(0xFFF2F2F7);
+  static const dividerLight = Color(0xFFF1F4F8);
 
   static const cardShadow = BoxShadow(
-    color: Color(0x0A000000),
-    blurRadius: 8,
-    offset: Offset(0, 2),
+    color: Color(0x100F172A),
+    blurRadius: 18,
+    offset: Offset(0, 6),
   );
 }
