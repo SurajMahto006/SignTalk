@@ -15,6 +15,11 @@ void main() {
     await tester.pumpWidget(const SignTalkApp());
     await tester.pumpAndSettle();
 
+    expect(find.text('Continue as guest'), findsOneWidget);
+    await tester.ensureVisible(find.text('Continue as guest'));
+    await tester.tap(find.text('Continue as guest'));
+    await tester.pumpAndSettle();
+
     expect(find.text('Communication,\nwithout barriers.'), findsOneWidget);
   });
 }

@@ -15,10 +15,12 @@ test('room full after two peers', () => {
   const b = { readyState: 1 };
   const c = { readyState: 1 };
 
-  const j1 = room.handleJoin(rooms, a, { room: 'demo', participantId: 'p1' });
+  const j1 = room.handleJoin(rooms, a, { room: 'demo', participantId: 'p1', role: 'host' });
   assert.equal(j1.error, undefined);
-  const j2 = room.handleJoin(rooms, b, { room: 'demo', participantId: 'p2' });
+  assert.equal(j1.role, 'host');
+  const j2 = room.handleJoin(rooms, b, { room: 'demo', participantId: 'p2', role: 'host' });
   assert.equal(j2.error, undefined);
+  assert.equal(j2.role, 'guest');
   const j3 = room.handleJoin(rooms, c, { room: 'demo', participantId: 'p3' });
   assert.match(j3.error, /full/i);
 });

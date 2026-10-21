@@ -45,6 +45,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   bool _connectionDetailsExpanded = false;
   bool _connecting = false;
   bool _closing = false;
+  bool _leavingCall = false;
   bool _callWasLogged = false;
   SpeechRecognitionService? _speech;
   final List<StreamSubscription<dynamic>> _captionSubs = [];
@@ -526,10 +527,10 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   @override
   void deactivate() {
+    _leavingCall = true;
     _stopGesturePipeline();
     _stopIslPipeline();
-    unawaited(_stopCaptions());
-    unawaited(_call.hangUp());
+    unawaited(_releaseCallDevices());
     super.deactivate();
   }
 
@@ -570,26 +571,6 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _hostCall() async {
-    if (_connecting) return;
-    SignTalkScope.of(context).textToSpeech.primeWebSpeechFromUserGesture();
-    _connecting = true;
-    setState(() {});
-    try {
-      await _releaseCameraPreviewForCall();
-      await _call.connectToRoom(
-        signalingUrl: _signalUrlController.text,
-        roomId: _roomController.text,
-        asHost: true,
-      );
-    } on ArgumentError catch (e) {
-      _showSnack(e.message ?? e.toString());
-    } finally {
-      _connecting = false;
-      if (mounted) setState(() {});
-    }
-  }
-
   Future<void> _joinCall() async {
     if (_connecting) return;
     SignTalkScope.of(context).textToSpeech.primeWebSpeechFromUserGesture();
@@ -614,6 +595,8 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     if (_callWasLogged || !_call.isActive) return;
     _callWasLogged = true;
     await SignTalkScope.of(context).activityLogs.addCall(
+      ownerId:
+          SignTalkScope.authOf(context).currentUser?.userId ?? 'demo',
       contactName: widget.contactName,
       roomId: _roomController.text.trim(),
     );
@@ -626,12 +609,19 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     if (mounted) widget.onClose();
   }
 
+  Future<void> _releaseCallDevices() async {
+    await _call.hangUp();
+    await _stopCaptions();
+    if (!mounted) return;
+    await SignTalkScope.of(context).speechRecognition.stopListening();
+    await SignTalkScope.of(context).cameraPreview.stop();
+  }
+
   Future<void> _endCall() async {
     await _recordCallIfNeeded();
     _stopGesturePipeline();
     _stopIslPipeline();
-    await _stopCaptions();
-    await _call.hangUp();
+    await _releaseCallDevices();
     if (mounted) {
       setState(() {
         _remoteGestureCaption = null;
@@ -670,7 +660,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _captionSubs.clear();
     await _speech?.stopListening();
     await _call.restoreMicAfterSpeechRecognition();
-    setState(() => _captionsListening = false);
+    if (mounted && !_leavingCall) setState(() => _captionsListening = false);
   }
 
   Future<void> _speakAssistText() async {
@@ -715,6 +705,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       listenable: _call,
       builder: (context, _) {
         final mediaConnected = _call.connectionState == CallConnectionState.connected;
+        final showCaptions = SignTalkScope.preferencesOf(context).captionsEnabled;
         final islStatus = SignTalkScope.of(context).islRecognition.rawAdapter.displayName;
         final inCall = _call.isActive;
 
@@ -772,8 +763,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                             roomController: _roomController,
                             signalUrlController: _signalUrlController,
                             connecting: _connecting,
+                            showSignalingField: WebRtcCallConfig.needsSeparateSignalingTunnel ||
+                                _signalUrlController.text.trim().isEmpty,
                             onCheckMedia: () => unawaited(_checkMedia()),
-                            onHost: () => unawaited(_hostCall()),
                             onJoin: () => unawaited(_joinCall()),
                           ),
                           Padding(
@@ -786,12 +778,12 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                                   call: _call,
                                   mediaConnected: mediaConnected,
                                   showRemotePlaceholder: true,
-                                  localCaption: _localGestureCaption,
-                                  remoteCaption: _remoteGestureCaption,
-                                  islLocalSentence: _localIslSentence,
-                                  islLocalLiveWord: _islLiveWord,
-                                  islPartnerSentence: _remoteIslSentence,
-                          partnerSpeech: _partnerSpeech,
+                                  localCaption: showCaptions ? _localGestureCaption : null,
+                                  remoteCaption: showCaptions ? _remoteGestureCaption : null,
+                                  islLocalSentence: showCaptions ? _localIslSentence : null,
+                                  islLocalLiveWord: showCaptions ? _islLiveWord : null,
+                                  islPartnerSentence: showCaptions ? _remoteIslSentence : null,
+                          partnerSpeech: showCaptions ? _partnerSpeech : null,
                                 ),
                               ),
                             ),
@@ -810,12 +802,12 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                           call: _call,
                           mediaConnected: mediaConnected,
                           showRemotePlaceholder: true,
-                          localCaption: _localGestureCaption,
-                          remoteCaption: _remoteGestureCaption,
-                          islLocalSentence: _localIslSentence,
-                          islLocalLiveWord: _islLiveWord,
-                          islPartnerSentence: _remoteIslSentence,
-                          partnerSpeech: _partnerSpeech,
+                          localCaption: showCaptions ? _localGestureCaption : null,
+                          remoteCaption: showCaptions ? _remoteGestureCaption : null,
+                          islLocalSentence: showCaptions ? _localIslSentence : null,
+                          islLocalLiveWord: showCaptions ? _islLiveWord : null,
+                          islPartnerSentence: showCaptions ? _remoteIslSentence : null,
+                          partnerSpeech: showCaptions ? _partnerSpeech : null,
                         ),
                       ),
                     ),
@@ -1401,16 +1393,16 @@ class _LobbyPanel extends StatelessWidget {
     required this.roomController,
     required this.signalUrlController,
     required this.connecting,
+    required this.showSignalingField,
     required this.onCheckMedia,
-    required this.onHost,
     required this.onJoin,
   });
 
   final TextEditingController roomController;
   final TextEditingController signalUrlController;
   final bool connecting;
+  final bool showSignalingField;
   final VoidCallback onCheckMedia;
-  final VoidCallback onHost;
   final VoidCallback onJoin;
 
   @override
@@ -1419,30 +1411,40 @@ class _LobbyPanel extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
       child: Column(
         children: [
-          if (WebRtcCallConfig.needsSeparateSignalingTunnel) ...[
-            Text(
-              WebRtcCallConfig.tunnelSignalingSetupHint,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: SignTalkColors.primaryBlue,
-                    height: 1.35,
-                  ),
-            ),
-            const SizedBox(height: 8),
-          ],
-          TextField(
-            controller: signalUrlController,
-            decoration: InputDecoration(
-              labelText: 'Signaling WebSocket URL',
-              hintText: WebRtcCallConfig.needsSeparateSignalingTunnel
-                  ? 'wss://your-signaling-tunnel.trycloudflare.com'
-                  : 'wss:// or ws://…',
-            ),
+          Text(
+            'Open SignTalk on both phones. Use the same room name, then press Join call. The first person waits. The second person connects.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: SignTalkColors.secondaryText,
+                  height: 1.35,
+                ),
           ),
           const SizedBox(height: 10),
+          if (showSignalingField) ...[
+            if (WebRtcCallConfig.needsSeparateSignalingTunnel) ...[
+              Text(
+                WebRtcCallConfig.tunnelSignalingSetupHint,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: SignTalkColors.primaryBlue,
+                      height: 1.35,
+                    ),
+              ),
+              const SizedBox(height: 8),
+            ],
+            TextField(
+              controller: signalUrlController,
+              decoration: InputDecoration(
+                labelText: 'Signaling WebSocket URL',
+                hintText: WebRtcCallConfig.needsSeparateSignalingTunnel
+                    ? 'wss://your-signaling-tunnel.trycloudflare.com'
+                    : 'wss:// or ws://…',
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
           TextField(
             controller: roomController,
             decoration: const InputDecoration(
-              labelText: 'Room ID (same on both devices)',
+              labelText: 'Room name (same on both phones)',
             ),
           ),
           const SizedBox(height: 8),
@@ -1454,22 +1456,12 @@ class _LobbyPanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton(
-                  onPressed: connecting ? null : onHost,
-                  child: const Text('Host call'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: connecting ? null : onJoin,
-                  child: const Text('Join call'),
-                ),
-              ),
-            ],
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: connecting ? null : onJoin,
+              child: const Text('Join call'),
+            ),
           ),
         ],
       ),

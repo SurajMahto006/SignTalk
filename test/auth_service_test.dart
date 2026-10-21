@@ -95,5 +95,44 @@ void main() {
       expect(badLogin.message, contains('Incorrect password'));
       expect(auth.isAuthenticated, isFalse);
     });
+
+    test('opens on sign in instead of restoring the guest demo', () async {
+      final auth = AuthService.instance;
+      final guest = await auth.login(userId: 'demo', password: 'demo');
+      expect(guest.success, isTrue);
+      expect(auth.currentUser?.userId, 'demo');
+
+      await auth.load();
+      expect(auth.isAuthenticated, isFalse);
+      expect(auth.currentUser, isNull);
+    });
+
+    test('keeps a signed-in account after reload and does not store the password', () async {
+      final auth = AuthService.instance;
+      final registered = await auth.register(
+        userId: 'sessionuser',
+        name: 'Suraj Mahto',
+        password: 'Password123',
+      );
+      expect(registered.success, isTrue, reason: registered.message);
+
+      await auth.load();
+      expect(auth.currentUser?.userId, 'sessionuser');
+
+      final prefs = await SharedPreferences.getInstance();
+      final stored = prefs.getString('st_user_credentials_v1') ?? '';
+      expect(stored, isNot(contains('Password123')));
+      expect(stored, contains('sha256:'));
+
+      await auth.logout();
+      await auth.load();
+      expect(auth.isAuthenticated, isFalse);
+
+      final again = await auth.login(
+        userId: 'sessionuser',
+        password: 'Password123',
+      );
+      expect(again.success, isTrue);
+    });
   });
 }

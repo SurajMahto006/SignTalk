@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../app/sign_talk_scope.dart';
+import '../../services/cloud/cloud_database.dart';
 import '../../services/auth/auth_user.dart';
 import '../../services/permissions/device_permission_status.dart';
 import '../../theme/sign_talk_colors.dart';
+import '../../widgets/notice_sheet.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key, required this.permissionStatus});
@@ -41,7 +43,7 @@ class SettingsScreen extends StatelessWidget {
                       ),
                       SizedBox(height: 3),
                       Text(
-                        'Saved demo sign-in: username demo, password demo',
+                        'Sign in, sign up, or continue as guest',
                         style: TextStyle(
                           fontSize: 14,
                           color: SignTalkColors.secondaryText,
@@ -50,25 +52,17 @@ class SettingsScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-                Material(
-                  color: SignTalkColors.card,
-                  shape: const CircleBorder(),
-                  child: InkWell(
-                    onTap: () => _showInfo(
-                      context,
-                      'Notifications',
-                      'You are all caught up. SignTalk will show important permission and accessibility updates here.',
-                    ),
-                    customBorder: const CircleBorder(),
-                    child: const SizedBox(
-                      width: 42,
-                      height: 42,
-                      child: Icon(
-                        Icons.notifications_none_rounded,
-                        color: SignTalkColors.primaryText,
-                      ),
-                    ),
-                  ),
+                NoticeBellButton(
+                  showBadge: SignTalkScope.of(context)
+                      .notices
+                      .collect(
+                        permissions: permissionStatus,
+                        preferences: prefs,
+                        logs: SignTalkScope.of(context).activityLogs.entriesFor(
+                          user?.userId ?? 'demo',
+                        ),
+                      )
+                      .isNotEmpty,
                 ),
               ],
             ),
@@ -238,6 +232,37 @@ class SettingsScreen extends StatelessWidget {
               icon: Icons.manage_accounts_outlined,
               children: [
                 _ChevronRow(
+                  icon: Icons.cloud_outlined,
+                  label: 'Cloud database',
+                  subtitle: CloudDatabase.instance.ready
+                      ? 'Accounts, contacts, and chats sync to Firebase'
+                      : 'Sign-in is on this phone until the database connects.',
+                  value: CloudDatabase.instance.statusLabel,
+                  onTap: () => _showInfo(
+                    context,
+                    'Cloud database',
+                    CloudDatabase.instance.ready
+                        ? 'Created accounts sync to Firebase. The guest account stays on this phone only.'
+                        : 'Sign-in could not reach the account database. You can still continue as guest.',
+                  ),
+                ),
+                _ChevronRow(
+                  icon: Icons.badge_outlined,
+                  label: 'Display name',
+                  subtitle: 'The name shown in the app',
+                  value: user?.name ?? 'Demo User',
+                  onTap: () => _editName(context, user),
+                ),
+                _ChevronRow(
+                  icon: Icons.lock_outline,
+                  label: 'Password',
+                  subtitle: user?.userId == 'demo'
+                      ? 'Guest password stays demo'
+                      : 'Change the password for this account',
+                  value: user?.userId == 'demo' ? 'demo' : 'Change',
+                  onTap: () => _changePassword(context, user),
+                ),
+                _ChevronRow(
                   icon: Icons.alternate_email,
                   label: 'Unique User ID',
                   subtitle: 'Your app user identifier',
@@ -266,6 +291,96 @@ class SettingsScreen extends StatelessWidget {
       false => SignTalkColors.callRed,
       null => SignTalkColors.secondaryText,
     };
+  }
+
+  Future<void> _editName(BuildContext context, AuthUser? user) async {
+    if (user == null) return;
+    final controller = TextEditingController(text: user.name);
+    final next = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Display name'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          onSubmitted: (value) => Navigator.pop(context, value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (next == null || !context.mounted) return;
+    final result = await SignTalkScope.authOf(context).updateName(next);
+    if (!context.mounted || result.success) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result.message ?? 'Could not update the name.'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _changePassword(BuildContext context, AuthUser? user) async {
+    if (user == null) return;
+    final current = TextEditingController();
+    final next = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Change password'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: current,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'Current password'),
+            ),
+            TextField(
+              controller: next,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'New password'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    final currentText = current.text;
+    final nextText = next.text;
+    current.dispose();
+    next.dispose();
+    if (confirmed != true || !context.mounted) return;
+    final result = await SignTalkScope.authOf(context).changePassword(
+      currentPassword: currentText,
+      newPassword: nextText,
+    );
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result.message ?? 'Password updated.'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   Future<void> _pickSpeechLanguage(BuildContext context, prefs) async {
@@ -397,12 +512,16 @@ class SettingsScreen extends StatelessWidget {
   }
 
   Future<void> _confirmLogout(BuildContext context) async {
+    final userId = SignTalkScope.authOf(context).currentUser?.userId;
+    final isGuest = userId == null || userId == 'demo';
     final shouldLogout = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Log Out'),
-        content: const Text(
-          'Log out on this screen only. Opening SignTalk again enters the saved demo account: username demo, password demo.',
+        content: Text(
+          isGuest
+              ? 'Leave the guest demo and return to sign in?'
+              : 'Return to sign in? This account stays saved.',
         ),
         actions: [
           TextButton(

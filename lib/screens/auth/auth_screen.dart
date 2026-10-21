@@ -22,69 +22,32 @@ class _AuthScreenState extends State<AuthScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
-  String _selectedPersonStatus = 'Normal';
+  String _selectedPersonStatus = 'Prefer not to say';
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
   String? _errorMessage;
-  String? _userIdStatusMessage;
-  bool? _isUserIdAvailable;
 
-  static const _personStatuses = ['Mute', 'Deaf', 'Normal'];
-
-  @override
-  void initState() {
-    super.initState();
-    _userIdController.addListener(_onUserIdChanged);
-  }
+  static const _personStatuses = [
+    'Deaf',
+    'Hard of hearing',
+    'Deafblind',
+    'Blind',
+    'Low vision',
+    'Non-speaking',
+    'Speech difficulty',
+    'Hearing',
+    'Prefer not to say',
+  ];
 
   @override
   void dispose() {
-    _userIdController.removeListener(_onUserIdChanged);
     _userIdController.dispose();
     _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
-  }
-
-  void _onUserIdChanged() {
-    if (_mode != AuthMode.register) return;
-    final text = _userIdController.text.trim().toLowerCase();
-    if (text.isEmpty) {
-      setState(() {
-        _isUserIdAvailable = null;
-        _userIdStatusMessage = null;
-      });
-      return;
-    }
-
-    if (text.length < 3) {
-      setState(() {
-        _isUserIdAvailable = false;
-        _userIdStatusMessage = 'User ID must be at least 3 characters.';
-      });
-      return;
-    }
-
-    final validIdRegex = RegExp(r'^[a-z0-9_.]+$');
-    if (!validIdRegex.hasMatch(text)) {
-      setState(() {
-        _isUserIdAvailable = false;
-        _userIdStatusMessage =
-            'Use only letters, numbers, dot, and underscore.';
-      });
-      return;
-    }
-
-    final isAvail = AuthService.instance.isUserIdAvailable(text);
-    setState(() {
-      _isUserIdAvailable = isAvail;
-      _userIdStatusMessage = isAvail
-          ? '@$text is available!'
-          : '@$text is already taken. Please choose another unique User ID.';
-    });
   }
 
   Future<void> _submit() async {
@@ -160,7 +123,7 @@ class _AuthScreenState extends State<AuthScreen> {
   Widget build(BuildContext context) {
     final compact = MediaQuery.sizeOf(context).height < 700;
     final phone = MediaQuery.sizeOf(context).width < 700;
-    final heroHeight = phone ? (compact ? 96.0 : 150.0) : (compact ? 160.0 : 235.0);
+    final heroHeight = phone ? (compact ? 88.0 : 118.0) : (compact ? 140.0 : 188.0);
     return Scaffold(
       backgroundColor: SignTalkColors.background,
       body: SafeArea(
@@ -183,7 +146,8 @@ class _AuthScreenState extends State<AuthScreen> {
                     SizedBox(height: compact ? 8 : 24),
                     Card(
                       elevation: 0,
-                      color: SignTalkColors.card.withValues(alpha: 0.88),
+                      color: SignTalkColors.card,
+                      shadowColor: const Color(0x140F172A),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(24),
                         side: const BorderSide(color: SignTalkColors.border),
@@ -210,9 +174,11 @@ class _AuthScreenState extends State<AuthScreen> {
                               _buildSignInFields(),
                             const SizedBox(height: 24),
                             _buildSubmitButton(),
+                            if (_mode == AuthMode.signIn) ...[
+                              const SizedBox(height: 10),
+                              _buildDemoAccountButton(),
+                            ],
                             const SizedBox(height: 14),
-                            _buildDemoAccountButton(),
-                            const SizedBox(height: 18),
                             _buildFooterNote(),
                           ],
                         ),
@@ -231,42 +197,21 @@ class _AuthScreenState extends State<AuthScreen> {
   Widget _buildBrandHeader() {
     return Column(
       children: [
-        Container(
-          width: 58,
-          height: 58,
-          decoration: BoxDecoration(
-            color: SignTalkColors.primaryBlue,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: SignTalkColors.primaryBlue.withValues(alpha: 0.3),
-                blurRadius: 16,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: const Icon(
-            Icons.back_hand_outlined,
-            color: Colors.white,
-            size: 30,
-          ),
-        ),
-        const SizedBox(height: 12),
         const Text(
           'SignTalk',
           style: TextStyle(
-            fontSize: 30,
+            fontSize: 28,
             fontWeight: FontWeight.w800,
             letterSpacing: -0.8,
             color: SignTalkColors.primaryText,
           ),
         ),
         const SizedBox(height: 4),
-        Text(
-          'Bridging Indian Sign Language & Speech',
+        const Text(
+          'Sign in, or create an account',
           style: TextStyle(
             fontSize: 14,
-            color: SignTalkColors.secondaryText.withValues(alpha: 0.9),
+            color: SignTalkColors.secondaryText,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -299,7 +244,7 @@ class _AuthScreenState extends State<AuthScreen> {
             ),
             Expanded(
               child: _TabButton(
-                label: 'Register',
+                label: 'Create account',
                 selected: _mode == AuthMode.register,
                 onTap: () {
                   setState(() {
@@ -335,7 +280,7 @@ class _AuthScreenState extends State<AuthScreen> {
             SizedBox(width: 10),
             Expanded(
               child: Text(
-                'System Requirement: Each person must choose a User ID. Your User ID identifies you during video calling, translation, and messaging.',
+                'Choose a User ID. It is checked when you create the account, and it must be unique.',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
@@ -393,7 +338,7 @@ class _AuthScreenState extends State<AuthScreen> {
         TextFormField(
           controller: _userIdController,
           decoration: InputDecoration(
-            hintText: 'Enter your User ID (e.g. demo_user)',
+            hintText: 'Your User ID',
             prefixIcon: const Padding(
               padding: EdgeInsets.only(left: 14, right: 8),
               child: Icon(
@@ -464,15 +409,6 @@ class _AuthScreenState extends State<AuthScreen> {
               ),
             ),
             prefixIconConstraints: const BoxConstraints(minWidth: 42),
-            suffixIcon: _isUserIdAvailable == null
-                ? null
-                : Icon(
-                    _isUserIdAvailable! ? Icons.check_circle : Icons.cancel,
-                    color: _isUserIdAvailable!
-                        ? SignTalkColors.successGreen
-                        : SignTalkColors.callRed,
-                    size: 20,
-                  ),
           ),
           validator: (v) {
             if (v == null || v.trim().isEmpty) return 'User ID is required.';
@@ -480,28 +416,9 @@ class _AuthScreenState extends State<AuthScreen> {
             if (!RegExp(r'^[a-z0-9_.]+$').hasMatch(v.trim().toLowerCase())) {
               return 'Only letters, numbers, _ and . allowed.';
             }
-            if (_isUserIdAvailable == false) {
-              return 'This User ID is already taken. Choose another.';
-            }
             return null;
           },
         ),
-        if (_userIdStatusMessage != null) ...[
-          const SizedBox(height: 4),
-          Padding(
-            padding: const EdgeInsets.only(left: 4),
-            child: Text(
-              _userIdStatusMessage!,
-              style: TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w600,
-                color: _isUserIdAvailable == true
-                    ? SignTalkColors.successGreen
-                    : SignTalkColors.callRed,
-              ),
-            ),
-          ),
-        ],
         const SizedBox(height: 14),
         _buildTextFieldLabel('Full Name'),
         TextFormField(
@@ -541,7 +458,7 @@ class _AuthScreenState extends State<AuthScreen> {
           ),
         ),
         const SizedBox(height: 14),
-        _buildTextFieldLabel('Person Status'),
+        _buildTextFieldLabel('Person status'),
         DropdownButtonFormField<String>(
           initialValue: _selectedPersonStatus,
           decoration: const InputDecoration(
@@ -714,7 +631,7 @@ class _AuthScreenState extends State<AuthScreen> {
         color: SignTalkColors.primaryBlue,
       ),
       label: const Text(
-        'Continue as demo (demo / demo)',
+        'Continue as guest',
         overflow: TextOverflow.ellipsis,
         style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
       ),
@@ -734,7 +651,9 @@ class _AuthScreenState extends State<AuthScreen> {
           ),
           const SizedBox(width: 6),
           Text(
-            'SignTalk Secure Session Authentication',
+            _mode == AuthMode.register
+                ? 'Your account is saved when you create it.'
+                : 'Continue as guest opens the demo account. Log out any time to come back here.',
             style: TextStyle(
               fontSize: 11,
               color: SignTalkColors.secondaryText.withValues(alpha: 0.8),

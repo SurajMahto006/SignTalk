@@ -1,13 +1,18 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'sign_talk_scope.dart';
+import '../screens/conversations/contact_list_screen.dart';
 import '../screens/conversations/conversations_screen.dart';
 import '../screens/conversations/video_call_screen.dart';
 import '../screens/home/home_screen.dart';
+import '../screens/learn/learn_isl_screen.dart';
 import '../screens/logs/logs_screen.dart';
 import '../screens/settings/settings_screen.dart';
 import '../screens/translate/sign_to_text_screen.dart';
 import '../screens/translate/speech_to_text_screen.dart';
+import '../services/auth/auth_service.dart';
 import '../services/permissions/device_permission_status.dart';
 import '../theme/sign_talk_colors.dart';
 
@@ -26,16 +31,16 @@ class _MainShellState extends State<MainShell> {
   String? _activeTool;
   int _conversationsSession = 0;
   String _contactName = 'Demo contact';
+  bool _threadOpen = false;
+  bool _threadBackToHome = true;
 
   static const _tabLabels = ['Home', 'Logs', 'Conversations', 'Settings'];
 
   @override
   Widget build(BuildContext context) {
     final viewportWidth = MediaQuery.sizeOf(context).width;
-    // Phones stay full width. A fixed 520px frame is wider than most phones and clips the page.
-    final appWidth = viewportWidth < 700
-        ? viewportWidth
-        : (viewportWidth < 1100 ? 720.0 : 840.0);
+    // Fill the Android width. Wider windows are already framed to a phone column.
+    final appWidth = viewportWidth;
     return Scaffold(
       backgroundColor: SignTalkColors.background,
       body: SafeArea(
@@ -59,6 +64,8 @@ class _MainShellState extends State<MainShell> {
                             onOpenSettings: _openSettings,
                             onSendToConversations: _sendSignTextToConversation,
                           )
+                        : _activeTool == 'learn'
+                        ? LearnIslScreen(onBack: _closeTool)
                         : _activeTool == 'speech'
                         ? SpeechToTextScreen(
                             onBack: _closeTool,
@@ -86,6 +93,7 @@ class _MainShellState extends State<MainShell> {
     setState(() {
       _activeTool = null;
       _selectedIndex = index;
+      if (index == 2) _threadOpen = false;
     });
   }
 
@@ -97,6 +105,8 @@ class _MainShellState extends State<MainShell> {
   void _openConversations() => setState(() {
     _activeTool = null;
     _selectedIndex = 2;
+    _threadOpen = true;
+    _threadBackToHome = true;
   });
 
   void _openSettings() => setState(() {
@@ -105,6 +115,14 @@ class _MainShellState extends State<MainShell> {
   });
 
   void _openSignToText() => setState(() => _activeTool = 'sign');
+
+  void _openLearnIsl() => setState(() => _activeTool = 'learn');
+
+  void _openContactList() => setState(() {
+    _activeTool = null;
+    _selectedIndex = 2;
+    _threadOpen = false;
+  });
 
   void _openSpeechToText() => setState(() => _activeTool = 'speech');
 
@@ -119,6 +137,8 @@ class _MainShellState extends State<MainShell> {
     setState(() {
       _activeTool = null;
       _selectedIndex = 2;
+      _threadOpen = true;
+      _threadBackToHome = true;
     });
   }
 
@@ -127,6 +147,8 @@ class _MainShellState extends State<MainShell> {
     setState(() {
       _activeTool = null;
       _selectedIndex = 2;
+      _threadOpen = true;
+      _threadBackToHome = true;
     });
   }
 
@@ -137,12 +159,25 @@ class _MainShellState extends State<MainShell> {
   });
 
   void _openContactConversation(String contactName) {
+    final ownerId =
+        SignTalkScope.authOf(context).currentUser?.userId ??
+        AuthService.demoUserId;
+    unawaited(
+      SignTalkScope.of(context).contacts.ensure(
+        ownerId: ownerId,
+        name: contactName,
+      ),
+    );
     setState(() {
       _contactName = contactName;
       _selectedIndex = 2;
+      _threadOpen = true;
+      _threadBackToHome = false;
       _conversationsSession++;
     });
   }
+
+  void _closeThread() => setState(() => _threadOpen = false);
 
   Widget _buildTabBody() {
     return switch (_selectedIndex) {
@@ -150,16 +185,23 @@ class _MainShellState extends State<MainShell> {
         onSignToTextTap: _openSignToText,
         onSpeechToTextTap: _openSpeechToText,
         onOpenConversations: _openConversations,
+        onManageContacts: _openContactList,
         onOpenLogs: () => _onTabSelected(1),
+        onLearnIsl: _openLearnIsl,
         onProfileTap: _openSettings,
       ),
       1 => LogsScreen(onOpenConversation: _openContactConversation),
-      2 => ConversationsScreen(
-        key: ValueKey(_conversationsSession),
-        contactName: _contactName,
-        onOpenVideoCall: _openVideoCall,
-        onBack: _goHome,
-      ),
+      2 => _threadOpen
+          ? ConversationsScreen(
+              key: ValueKey(_conversationsSession),
+              contactName: _contactName,
+              onOpenVideoCall: _openVideoCall,
+              onBack: _threadBackToHome ? _goHome : _closeThread,
+              backTooltip: _threadBackToHome
+                  ? 'Back to Home'
+                  : 'Back to contacts',
+            )
+          : ContactListScreen(onOpenContact: _openContactConversation),
       3 => SettingsScreen(permissionStatus: widget.permissionStatus),
       _ => _TabPlaceholder(title: _tabLabels[_selectedIndex]),
     };

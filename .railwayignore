@@ -1,0 +1,13 @@
+.git
+.dart_tool
+.idea
+android
+ios
+linux
+macos
+windows
+tools/include-reference
+tools/isl-sidecar
+stitch_signtalk_accessible_ui_design
+**/node_modules
+*.iml
