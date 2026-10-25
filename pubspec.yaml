@@ -71,6 +71,7 @@ flutter:
 
   assets:
     - assets/images/signtalk-auth-hero.png
+    - assets/images/signtalk-logo.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:

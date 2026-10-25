@@ -296,7 +296,23 @@ class SettingsScreen extends StatelessWidget {
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(title),
+        title: Row(
+          children: [
+            if (title == 'About SignTalk') ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.asset(
+                  'assets/images/signtalk-logo.png',
+                  width: 28,
+                  height: 28,
+                  fit: BoxFit.contain,
+                ),
+              ),
+              const SizedBox(width: 10),
+            ],
+            Text(title),
+          ],
+        ),
         content: Text(body),
         actions: [
           TextButton(

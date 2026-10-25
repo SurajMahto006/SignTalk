@@ -141,14 +141,33 @@ class _HomeHeader extends StatelessWidget {
         Container(
           width: 44,
           height: 44,
-          decoration: const BoxDecoration(
-            color: SignTalkColors.primaryBlue,
-            shape: BoxShape.circle,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: SignTalkColors.primaryBlue.withValues(alpha: 0.15),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
-          child: const Icon(
-            Icons.back_hand_outlined,
-            color: Colors.white,
-            size: 25,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.asset(
+              'assets/images/signtalk-logo.png',
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) => Container(
+                decoration: const BoxDecoration(
+                  color: SignTalkColors.primaryBlue,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.back_hand_outlined,
+                  color: Colors.white,
+                  size: 25,
+                ),
+              ),
+            ),
           ),
         ),
         const SizedBox(width: 10),

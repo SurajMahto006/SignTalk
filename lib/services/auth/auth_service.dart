@@ -43,10 +43,9 @@ class AuthService extends ChangeNotifier {
       _loadUsersFromStorage();
       _ensureDefaultDemoUser();
 
-      final activeUserId = _prefs?.getString(_keyActiveSessionUserId);
-      if (activeUserId != null && _usersByUserId.containsKey(activeUserId.toLowerCase())) {
-        _currentUser = _usersByUserId[activeUserId.toLowerCase()];
-      }
+      // Always start on login page when app starts
+      _currentUser = null;
+      await _prefs?.remove(_keyActiveSessionUserId);
     } catch (e) {
       if (kDebugMode) debugPrint('[AuthService] Error loading auth state: $e');
     } finally {

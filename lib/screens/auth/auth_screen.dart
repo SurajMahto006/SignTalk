@@ -244,27 +244,7 @@ class _AuthScreenState extends State<AuthScreen> {
   Widget _buildBrandHeader() {
     return Column(
       children: [
-        Container(
-          width: 58,
-          height: 58,
-          decoration: BoxDecoration(
-            color: SignTalkColors.primaryBlue,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: SignTalkColors.primaryBlue.withValues(alpha: 0.3),
-                blurRadius: 16,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: const Icon(
-            Icons.back_hand_outlined,
-            color: Colors.white,
-            size: 30,
-          ),
-        ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
         const Text(
           'SignTalk',
           style: TextStyle(
@@ -461,6 +441,8 @@ class _AuthScreenState extends State<AuthScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        _buildUniqueIdNotice(),
+        const SizedBox(height: 12),
         _buildTextFieldLabel('User ID (Required)'),
         TextFormField(
           controller: _userIdController,
@@ -585,7 +567,7 @@ class _AuthScreenState extends State<AuthScreen> {
         const SizedBox(height: 14),
         _buildTextFieldLabel('Person Status'),
         DropdownButtonFormField<String>(
-          value: _selectedPersonStatus,
+          initialValue: _selectedPersonStatus,
           decoration: const InputDecoration(
             prefixIcon: Padding(
               padding: EdgeInsets.only(left: 14, right: 8),
@@ -869,14 +851,9 @@ class _AuthHeroIllustration extends StatelessWidget {
             'assets/images/signtalk-auth-hero.png',
             fit: BoxFit.cover,
             semanticLabel: 'SignTalk illustration showing two people communicating with sign language, speech, and text',
-            errorBuilder: (context, error, stackTrace) => const DecoratedBox(
-              decoration: BoxDecoration(color: SignTalkColors.tintBlue),
-              child: Center(
-                child: Icon(
-                  Icons.diversity_3_rounded,
-                  size: 52,
-                  color: SignTalkColors.primaryBlue,
-                ),
+            errorBuilder: (context, error, stackTrace) => const SizedBox.expand(
+              child: CustomPaint(
+                painter: _AuthHeroPainter(),
               ),
             ),
           ),
@@ -887,6 +864,8 @@ class _AuthHeroIllustration extends StatelessWidget {
 }
 
 class _AuthHeroPainter extends CustomPainter {
+  const _AuthHeroPainter();
+
   @override
   void paint(Canvas canvas, Size size) {
     final scale = (size.width / 680).clamp(0.1, size.height / 240);

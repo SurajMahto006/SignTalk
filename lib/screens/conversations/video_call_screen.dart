@@ -198,8 +198,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     GestureStartResult? start;
     var lastVideoId = '';
     for (var attempt = 0; attempt < 24; attempt++) {
-      if (!mounted || _closing || !_call.isActive || !_call.hasRemoteVideo)
+      if (!mounted || _closing || !_call.isActive || !_call.hasRemoteVideo) {
         return;
+      }
       lastVideoId = webrtcLocalVideoElementId(_call.remoteRenderer);
       start = _gestures.startRemoteOnVideoElementId(lastVideoId);
       if (start.ok) break;
@@ -238,8 +239,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
     final caption = GestureDemoLabels.captionForMediaPipeGesture(det.gesture);
     if (caption == null) return;
-    if (!_remoteDetectReleaseArmed && _remoteDetectLatchedId == det.gesture)
+    if (!_remoteDetectReleaseArmed && _remoteDetectLatchedId == det.gesture) {
       return;
+    }
 
     final now = DateTime.now();
     if (_lastRemoteDetectCaption == caption &&
@@ -259,8 +261,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     final det = _gestures.consumeLatest();
     if (det == null) return;
     if (det.status == 'error' && det.message != null) {
-      if (mounted && !_closing)
+      if (mounted && !_closing) {
         setState(() => _gestureStatus = 'Error — ${det.message}');
+      }
       return;
     }
     if (det.status == 'tracking') {
@@ -302,11 +305,12 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       score: det.score,
     );
     if (!sent) {
-      if (mounted && !_closing)
+      if (mounted && !_closing) {
         setState(
           () => _gestureStatus =
               'Error — signaling not joined (caption not sent)',
         );
+      }
       return;
     }
 
@@ -954,241 +958,7 @@ class _GestureCaptionChip extends StatelessWidget {
   }
 }
 
-class _ConnectionDetailsSection extends StatelessWidget {
-  const _ConnectionDetailsSection({
-    required this.call,
-    required this.connecting,
-    required this.initiallyExpanded,
-    required this.onExpansionChanged,
-  });
 
-  final WebRtcCallService call;
-  final bool connecting;
-  final bool initiallyExpanded;
-  final ValueChanged<bool> onExpansionChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: SignTalkColors.card,
-      child: ExpansionTile(
-        initiallyExpanded: initiallyExpanded,
-        onExpansionChanged: onExpansionChanged,
-        tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-        title: const Text(
-          'Connection details',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: SignTalkColors.primaryText,
-          ),
-        ),
-        subtitle: Text(
-          connecting ? 'Working…' : (call.statusMessage ?? 'Diagnostics'),
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        children: [
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              _MediaChip(
-                label: _CallDiagnostics.signalingLabel(call.signalingState),
-                ok: call.signalingState == CallSignalingState.joined,
-              ),
-              _MediaChip(
-                label: _CallDiagnostics.mediaPathLabel(call.mediaPathState),
-                ok: call.mediaPathState == CallMediaPathState.connected,
-              ),
-              _MediaChip(
-                label: _CallDiagnostics.accessLabel(call.mediaAccessState),
-                ok: call.mediaAccessState == CallMediaAccessState.granted,
-              ),
-              _MediaChip(
-                label: call.hasRemoteAudio ? 'Remote audio' : 'No remote audio',
-                ok: call.hasRemoteAudio,
-              ),
-            ],
-          ),
-          if (call.mediaAccessDetail != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              call.mediaAccessDetail!,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
-          if (!WebRtcCallConfig.pageIsSecureContext) ...[
-            const SizedBox(height: 8),
-            Text(
-              WebRtcCallConfig.secureContextHint,
-              style: TextStyle(
-                fontSize: 11,
-                color: SignTalkColors.callRed.withValues(alpha: 0.9),
-              ),
-            ),
-          ],
-          const SizedBox(height: 8),
-          Text(
-            'Tracks — local: ${call.hasLocalVideo ? 1 : 0}v/${call.hasLocalAudio ? 1 : 0}a · '
-            'remote: ${call.hasRemoteVideo ? 1 : 0}v/${call.hasRemoteAudio ? 1 : 0}a · '
-            'remote events: ${call.remoteTracksReceived}',
-            style: Theme.of(context).textTheme.bodySmall
-                ?.copyWith(fontSize: 11),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'ICE: ${call.lastIceConnectionState} · peer: ${call.lastPeerConnectionState}',
-            style: Theme.of(context).textTheme.bodySmall
-                ?.copyWith(fontSize: 11),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Gesture captions use the signaling WebSocket (type gesture_caption) when a data channel is not configured.',
-            style: TextStyle(
-              fontSize: 11,
-              color: SignTalkColors.secondaryText,
-              height: 1.35,
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Run the signaling server on your PC (port 8765). Use ws://127.0.0.1:8765 on this device or your LAN IP / wss:// when the app is served over HTTPS. Allow inbound TCP 8765 on Private networks in Windows Firewall if needed.',
-            style: TextStyle(
-              fontSize: 11,
-              color: SignTalkColors.secondaryText,
-              height: 1.35,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _GestureDemoHelpSection extends StatelessWidget {
-  const _GestureDemoHelpSection({
-    required this.initiallyExpanded,
-    required this.onExpansionChanged,
-  });
-
-  final bool initiallyExpanded;
-  final ValueChanged<bool> onExpansionChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: SignTalkColors.card,
-      child: ExpansionTile(
-        initiallyExpanded: initiallyExpanded,
-        onExpansionChanged: onExpansionChanged,
-        tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-        title: const Text(
-          'Demo gestures (prototype)',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: SignTalkColors.primaryText,
-          ),
-        ),
-        subtitle: Text(
-          GestureDemoLabels.prototypeDisclaimer,
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        children: [
-          for (final g in GestureDemoLabels.demoGestures) ...[
-            Text(
-              g.caption,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: SignTalkColors.primaryText,
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Text(
-                g.poseHint,
-                style: Theme.of(context).textTheme.bodySmall
-                    ?.copyWith(height: 1.35),
-              ),
-            ),
-          ],
-          Text(
-            'Your signs appear on your preview and are sent to your partner. Their signs show on your main video '
-            '(and vice versa). Spoken output says the word only: HELLO, YES, or STOP.',
-            style: Theme.of(context).textTheme.bodySmall
-                ?.copyWith(fontSize: 11, height: 1.35),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'After each caption, lower your hand briefly before repeating the same gesture.',
-            style: Theme.of(context).textTheme.bodySmall
-                ?.copyWith(fontSize: 11, height: 1.35),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-abstract final class _CallDiagnostics {
-  static String signalingLabel(CallSignalingState s) => switch (s) {
-    CallSignalingState.joined => 'Signaling joined',
-    CallSignalingState.connecting => 'Signaling…',
-    CallSignalingState.disconnected => 'Signaling lost',
-    CallSignalingState.failed => 'Signaling failed',
-    _ => 'Signaling idle',
-  };
-
-  static String mediaPathLabel(CallMediaPathState s) => switch (s) {
-    CallMediaPathState.connected => 'Media connected',
-    CallMediaPathState.negotiating => 'Negotiating',
-    CallMediaPathState.preparingLocalMedia => 'Opening camera/mic',
-    CallMediaPathState.reconnecting => 'Reconnecting',
-    CallMediaPathState.failed => 'Media failed',
-    _ => 'Media idle',
-  };
-
-  static String accessLabel(CallMediaAccessState s) => switch (s) {
-    CallMediaAccessState.granted => 'Permissions OK',
-    CallMediaAccessState.requesting => 'Requesting…',
-    CallMediaAccessState.denied => 'Permission denied',
-    CallMediaAccessState.unavailable => 'No device',
-    CallMediaAccessState.error => 'Media error',
-    _ => 'Media not checked',
-  };
-}
-
-class _MediaChip extends StatelessWidget {
-  const _MediaChip({required this.label, required this.ok});
-
-  final String label;
-  final bool ok;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: ok ? SignTalkColors.tintBlue : SignTalkColors.card,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: ok
-              ? SignTalkColors.primaryBlue.withValues(alpha: 0.4)
-              : SignTalkColors.border,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        child: Text(
-          label,
-          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w500),
-        ),
-      ),
-    );
-  }
-}
 
 class _LobbyPanel extends StatelessWidget {
   const _LobbyPanel({

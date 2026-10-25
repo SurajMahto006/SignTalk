@@ -451,7 +451,7 @@ class _MicrophoneCard extends StatelessWidget {
                 color: listening ? SignTalkColors.primaryBlue : SignTalkColors.tintBlue,
                 shape: const CircleBorder(),
                 child: InkWell(
-                  onTap: onPrimaryMic,
+                  onTap: micEnabled ? onPrimaryMic : null,
                   customBorder: const CircleBorder(),
                   child: SizedBox(
                     width: 72,
