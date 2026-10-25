@@ -15,8 +15,10 @@ C. One frame: the temporal mean of the normalized sequence. A length-1 LSTM
    and is not replaced with another head.
 
 Limitations: test_include.csv has no signer id, so this is not signer-held-out.
-Pose files are not in the SignTalk repo. Metrics are computed only when every
-test pose file loads. The live call is not modified.
+Pose files are not in the SignTalk repo. Metrics are computed when every
+present pose file loads. The only missing file that may be excluded is
+Days_and_Time/Second (Number)/MVI_4650.pkl when its CSV Word normalizes to
+Second (Number). That exclusion is reported. The live call is not modified.
 """
 
 from __future__ import annotations
@@ -60,6 +62,8 @@ TEST_CSV = (
     / "Train_Test_Split"
     / "test_include.csv"
 )
+ALLOWED_MISSING_POSE = "Days_and_Time/Second (Number)/MVI_4650.pkl"
+ALLOWED_MISSING_CLASS = "Second (Number)"
 RESULTS_DIR = SIDECAR_ROOT / "experiment-results"
 
 
@@ -76,6 +80,11 @@ def gloss_key(word: str) -> str:
 def read_test_rows() -> list[dict[str, str]]:
     with TEST_CSV.open(newline="", encoding="utf-8") as handle:
         return list(csv.DictReader(handle))
+
+
+def relative_pose_path(file_path: str) -> str:
+    """CSV-relative pose path with forward slashes, for an exact allowlist compare."""
+    return Path(file_path).with_suffix(".pkl").as_posix()
 
 
 def pose_file(root: str, file_path: str) -> Path:
@@ -299,18 +308,34 @@ def main() -> int:
         )
         return fail(base, 2)
 
-    missing_files = []
+    missing_entries = []
+    evaluable_rows = []
     for row in rows:
         path = pose_file(root, row["FilePath"])
-        if not path.is_file():
-            missing_files.append(str(path))
-            if len(missing_files) >= 5:
-                break
-    if missing_files:
-        base["reason"] = (
-            f"{len(missing_files)} or more test pose files are missing under {root}. "
-            f"Examples: {missing_files}. Metrics were not computed."
-        )
+        if path.is_file():
+            evaluable_rows.append(row)
+        else:
+            missing_entries.append((relative_pose_path(row["FilePath"]), row["Word"]))
+    missing_files = [relative for relative, _word in missing_entries]
+    class_key = gloss_key(ALLOWED_MISSING_CLASS)
+    path_is_allowed = missing_files == [ALLOWED_MISSING_POSE]
+    word_matches = path_is_allowed and gloss_key(missing_entries[0][1]) == class_key
+    allowed_skip = path_is_allowed and word_matches
+    base["csv_rows"] = len(rows)
+    base["skipped_rows"] = len(missing_files)
+    base["skipped_paths"] = missing_files
+    if missing_files and not allowed_skip:
+        if path_is_allowed:
+            base["reason"] = (
+                f"Missing pose {ALLOWED_MISSING_POSE} has Word {missing_entries[0][1]!r}, "
+                f"which does not match {ALLOWED_MISSING_CLASS!r} after gloss_key normalization. "
+                "Metrics were not computed."
+            )
+        else:
+            base["reason"] = (
+                f"{len(missing_files)} test pose files are missing under {root}. "
+                f"Paths: {missing_files}. Metrics were not computed."
+            )
         return fail(base, 2)
 
     label_to_index = {gloss_key(label): index for index, label in enumerate(labels)}
@@ -321,7 +346,7 @@ def main() -> int:
     correct = {name: 0 for name in variants}
     elapsed = {name: [] for name in variants}
 
-    for row in rows:
+    for row in evaluable_rows:
         path = pose_file(root, row["FilePath"])
         sequence = normalize_sequence(load_keypoints(path))
         if sequence.shape[0] < 1 or sequence.shape[1] != 54:
@@ -344,7 +369,17 @@ def main() -> int:
             correct[name] += int(predicted == truth)
         del sequence
 
-    total = len(rows)
+    total = len(evaluable_rows)
+    if allowed_skip:
+        skipped_class_csv_support = sum(
+            1 for row in rows if gloss_key(row["Word"]) == class_key
+        )
+        skipped_class_evaluated_support = sum(
+            1 for row in evaluable_rows if gloss_key(row["Word"]) == class_key
+        )
+    else:
+        skipped_class_csv_support = None
+        skipped_class_evaluated_support = None
     results = [
         score_variant(name, confusion[name], correct[name], total, elapsed[name], labels)
         for name in variants
@@ -352,6 +387,14 @@ def main() -> int:
     payload = {
         **base,
         "metrics_computed": True,
+        "csv_rows": len(rows),
+        "evaluated_rows": total,
+        "skipped_rows": len(missing_files),
+        "skipped_paths": missing_files,
+        "test_set": "reduced" if allowed_skip else "full",
+        "skipped_class": class_key if allowed_skip else None,
+        "skipped_class_csv_support": skipped_class_csv_support,
+        "skipped_class_evaluated_support": skipped_class_evaluated_support,
         "samples": total,
         "variants_omitted": [] if one_frame_ok else ["temporal_mean_1"],
         "omission_reason": None
@@ -360,7 +403,17 @@ def main() -> int:
         "results": results,
     }
     path = write_report(payload)
-    print(f"Evaluated {total} test clips. Report: {path}")
+    print(f"CSV rows: {len(rows)}. Evaluated: {total}. Skipped: {len(missing_files)}.")
+    if allowed_skip:
+        print(f"Skipped missing pose file: {ALLOWED_MISSING_POSE}")
+        print(
+            f"Metrics use the reduced test set of {total} clips, not all {len(rows)} CSV rows."
+        )
+        print(
+            f"Skipped class {class_key}: CSV support {skipped_class_csv_support}, "
+            f"evaluated support {skipped_class_evaluated_support}."
+        )
+    print(f"Report: {path}")
     for item in results:
         print(
             f"{item['variant']}: accuracy={item['top1_accuracy']:.4f} "

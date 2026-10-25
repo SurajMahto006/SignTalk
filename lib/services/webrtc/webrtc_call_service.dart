@@ -203,21 +203,19 @@ class WebRtcCallService extends ChangeNotifier {
         'type': 'join',
         'room': _roomId,
         'participantId': _participantId,
-        'role': asHost ? 'host' : 'guest',
+        'role': 'auto',
       });
-      statusMessage = asHost ? 'Waiting for guest…' : 'Waiting for host…';
+      statusMessage = 'Joining room…';
       notifyListeners();
 
-      if (asHost) {
-        try {
-          mediaPathState = CallMediaPathState.preparingLocalMedia;
-          notifyListeners();
-          await _preparePeerConnection();
-          _startNegotiationTimeout(session);
-        } catch (e) {
-          if (session != _signalingGeneration) return;
-          _failMedia('Could not access camera/microphone: $e');
-        }
+      try {
+        mediaPathState = CallMediaPathState.preparingLocalMedia;
+        notifyListeners();
+        await _preparePeerConnection();
+        _startNegotiationTimeout(session);
+      } catch (e) {
+        if (session != _signalingGeneration) return;
+        _failMedia('Could not access camera/microphone: $e');
       }
     } catch (e) {
       if (session != _signalingGeneration) return;
@@ -292,9 +290,11 @@ class WebRtcCallService extends ChangeNotifier {
       return;
     }
     if (_localStream != null && disposeExisting) {
-      await _localStream!.dispose();
+      final existing = _localStream;
       _localStream = null;
       localRenderer.srcObject = null;
+      _stopTracksNow(existing);
+      await existing?.dispose();
     }
     if (!WebRtcCallConfig.pageIsSecureContext) {
       throw StateError(WebRtcCallConfig.secureContextHint);
@@ -607,8 +607,21 @@ class WebRtcCallService extends ChangeNotifier {
           _signalingJoined = true;
           signalingState = CallSignalingState.joined;
           peersInRoom = (msg['peers'] as num?)?.toInt() ?? 0;
-          statusMessage = 'In room $_roomId ($peersInRoom other peer(s))';
+          final assignedRole = msg['role']?.toString();
+          if (assignedRole == 'host' || assignedRole == 'guest') {
+            _isHost = assignedRole == 'host';
+          } else {
+            _isHost = peersInRoom == 0;
+          }
+          statusMessage = _isHost
+              ? (peersInRoom == 0
+                  ? 'Waiting for the other person in this room…'
+                  : 'Connecting to the other person…')
+              : 'Connecting to the other person…';
           notifyListeners();
+          if (_isHost && peersInRoom > 0 && !_makingOffer && _peerConnection != null) {
+            await _createAndSendOffer();
+          }
         case 'peer_joined':
           _signalingJoined = true;
           peersInRoom += 1;
@@ -804,21 +817,40 @@ class WebRtcCallService extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _stopTracksNow(MediaStream? stream) {
+    if (stream == null) return;
+    for (final track in stream.getTracks()) {
+      try {
+        track.enabled = false;
+        track.stop();
+      } catch (error) {
+        _logMedia('Could not stop a media track: $error');
+      }
+    }
+  }
+
   Future<void> hangUp({bool notify = true}) async {
     _signalingGeneration++;
     _signalingJoined = false;
     _signalingChain = Future<void>.value();
     _clearNegotiationTimeout();
     _iceBuffer.reset();
+    final local = _localStream;
+    final remote = _remoteStream;
+    _localStream = null;
+    _remoteStream = null;
+    _stopTracksNow(local);
+    _stopTracksNow(remote);
+    localRenderer.srcObject = null;
+    remoteRenderer.srcObject = null;
     await _signalSub?.cancel();
     _signalSub = null;
     await _channel?.sink.close();
     _channel = null;
     await _peerConnection?.close();
     _peerConnection = null;
-    await _localStream?.dispose();
-    _localStream = null;
-    _remoteStream = null;
+    await local?.dispose();
+    await remote?.dispose();
     hasLocalAudio = false;
     hasLocalVideo = false;
     micEnabled = true;

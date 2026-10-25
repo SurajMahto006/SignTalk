@@ -131,6 +131,7 @@ wss.on('connection', (ws, req) => {
           room: result.joined,
           peers: result.peers,
           participantId: ws.participantId,
+          role: result.role || ws.role || 'guest',
         }),
       );
       for (const peer of room.peersInRoom(rooms, result.joined, ws)) {

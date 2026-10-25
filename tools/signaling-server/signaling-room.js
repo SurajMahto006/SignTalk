@@ -33,13 +33,15 @@ function handleJoin(rooms, ws, msg) {
   if (others.length >= MAX_PEERS_PER_ROOM) {
     return { error: 'Room is full (maximum 2 participants).' };
   }
+  const role = others.length === 0 ? 'host' : 'guest';
   ws.room = room;
   ws.participantId = msg.participantId ?? null;
-  ws.role = msg.role ?? 'guest';
+  ws.role = role;
   set.add(ws);
   return {
     joined: room,
     peers: others.length,
+    role,
   };
 }
 
