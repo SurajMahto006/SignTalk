@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../../app/sign_talk_scope.dart';
+import '../../services/auth/auth_service.dart';
 import '../../services/speech/speech_recognition_service.dart';
 import '../../services/speech/speech_transcript_controller.dart';
 import '../../services/speech/text_to_speech_service.dart';
@@ -477,6 +478,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     if (_call.isActive && !_callWasLogged) {
       _callWasLogged = true;
       await scope.activityLogs.addCall(
+        ownerId: scope.authService.currentUser?.userId ?? AuthService.demoUserId,
         contactName: widget.contactName,
         roomId: _roomController.text.trim(),
       );

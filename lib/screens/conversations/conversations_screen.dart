@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../app/sign_talk_scope.dart';
+import '../../services/auth/auth_service.dart';
 import '../../services/isl/text_to_sign_reference.dart';
 import '../../services/speech/speech_recognition_service.dart';
 import '../../services/speech/text_to_speech_service.dart';
@@ -192,6 +193,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
       _translateHint = null;
     });
     await scope.activityLogs.addChat(
+      ownerId: scope.authService.currentUser?.userId ?? AuthService.demoUserId,
       contactName: widget.contactName,
       preview: text,
     );

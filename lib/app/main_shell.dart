@@ -5,6 +5,7 @@ import '../screens/contacts/contacts_screen.dart';
 import '../screens/conversations/conversations_screen.dart';
 import '../screens/conversations/video_call_screen.dart';
 import '../screens/home/home_screen.dart';
+import '../screens/learn/learn_isl_screen.dart';
 import '../screens/logs/logs_screen.dart';
 import '../screens/settings/settings_screen.dart';
 import '../screens/translate/sign_to_text_screen.dart';
@@ -78,6 +79,8 @@ class _MainShellState extends State<MainShell> {
                             onSendToConversations:
                                 _sendSpeechTextToConversation,
                           )
+                        : _activeTool == 'learn'
+                        ? LearnIslScreen(onBack: _closeTool)
                         : _buildTabBody(),
                   ),
                   if (!_videoCallOpen)
@@ -119,6 +122,8 @@ class _MainShellState extends State<MainShell> {
   void _openSignToText() => setState(() => _activeTool = 'sign');
 
   void _openSpeechToText() => setState(() => _activeTool = 'speech');
+
+  void _openLearn() => setState(() => _activeTool = 'learn');
 
   void _openContacts() => setState(() => _activeTool = 'contacts');
 
@@ -175,6 +180,7 @@ class _MainShellState extends State<MainShell> {
         onOpenContacts: _openContacts,
         onOpenLogs: () => _onTabSelected(1),
         onProfileTap: _openSettings,
+        onLearnTap: _openLearn,
       ),
       1 => LogsScreen(onOpenConversation: _openContactConversation),
       2 => ConversationsScreen(

@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../app/sign_talk_scope.dart';
 import '../../theme/sign_talk_colors.dart';
+import '../../widgets/notice_sheet.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({
@@ -12,6 +15,7 @@ class HomeScreen extends StatelessWidget {
     this.onOpenContacts,
     this.onOpenLogs,
     this.onProfileTap,
+    this.onLearnTap,
   });
 
   final VoidCallback onSignToTextTap;
@@ -20,6 +24,7 @@ class HomeScreen extends StatelessWidget {
   final VoidCallback? onOpenContacts;
   final VoidCallback? onOpenLogs;
   final VoidCallback? onProfileTap;
+  final VoidCallback? onLearnTap;
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +39,7 @@ class HomeScreen extends StatelessWidget {
           children: [
             _HomeHeader(
               onProfileTap: onProfileTap,
-              onNotificationsTap: () => _showNotice(context),
+              onNotificationsTap: () => unawaited(showNoticeSheet(context)),
             ),
             const SizedBox(height: 20),
             _HeroCard(userName: name, onStartConversation: onOpenConversations),
@@ -104,21 +109,12 @@ class HomeScreen extends StatelessWidget {
               wide: wide,
               onContacts: onOpenContacts ?? onOpenConversations,
               onHistory: onOpenLogs ?? onOpenConversations,
-              onLearn: onSignToTextTap,
+              onLearn: onLearnTap ?? onSignToTextTap,
               onSettings: onProfileTap ?? onOpenConversations,
             ),
           ],
         );
       },
-    );
-  }
-
-  void _showNotice(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('You are all caught up.'),
-        behavior: SnackBarBehavior.floating,
-      ),
     );
   }
 }
