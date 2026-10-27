@@ -1,12 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../app/sign_talk_scope.dart';
 import '../../services/speech/speech_recognition_service.dart';
 import '../../services/speech/speech_transcript_controller.dart';
-import '../../services/speech/text_to_speech_service.dart';
 import '../../theme/sign_talk_colors.dart';
 
 class SpeechToTextScreen extends StatefulWidget {
@@ -32,12 +30,13 @@ class _SpeechToTextScreenState extends State<SpeechToTextScreen> {
   bool _isPaused = false;
   bool _isListening = false;
   bool _available = false;
+  bool _cameraActive = false;
+  String? _cameraError;
   String? _lastError;
 
   final List<StreamSubscription<dynamic>> _subs = [];
   SpeechRecognitionService? _speech;
-
-  String get _language => SignTalkScope.preferencesOf(context).speechLanguageLabel;
+  Timer? _captionRestart;
 
   @override
   void initState() {
@@ -48,7 +47,7 @@ class _SpeechToTextScreenState extends State<SpeechToTextScreen> {
       }
     });
     _transcript.addListener(_syncFieldFromTranscript);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _bindSpeech());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _openCameraAndCaptions());
   }
 
   void _syncFieldFromTranscript() {
@@ -70,11 +69,24 @@ class _SpeechToTextScreenState extends State<SpeechToTextScreen> {
       ..add(speech.partialTranscriptStream.listen(_transcript.applyPartial))
       ..add(speech.finalTranscriptStream.listen(_transcript.applyFinal))
       ..add(speech.errorStream.listen((e) {
-        _lastError = e;
-        _showSnack(e);
+        final network = e.toLowerCase().contains('network') || e.contains('400');
+        _lastError = network
+            ? 'Captions need Chrome and an internet connection. Your camera can stay on.'
+            : e;
+        if (!network) _showSnack(_lastError!);
         setState(() {});
       }))
-      ..add(speech.listeningStream.listen((l) => setState(() => _isListening = l)));
+      ..add(speech.listeningStream.listen((listening) {
+        setState(() => _isListening = listening);
+        _captionRestart?.cancel();
+        if (!listening && _cameraActive && !_isPaused && _lastError == null) {
+          _captionRestart = Timer(const Duration(milliseconds: 500), () {
+            if (mounted && !_isListening && _lastError == null && !_isPaused) {
+              unawaited(_speech?.startListening());
+            }
+          });
+        }
+      }));
 
     final ok = await speech.initialize();
     if (!mounted) return;
@@ -84,8 +96,28 @@ class _SpeechToTextScreenState extends State<SpeechToTextScreen> {
     });
   }
 
+  Future<void> _openCameraAndCaptions() async {
+    await _bindSpeech();
+    if (!mounted) return;
+    final scope = SignTalkScope.of(context);
+    final camera = scope.cameraPreview;
+    final started = camera.isActive || await camera.start();
+    scope.permissionStatus.reportCamera(
+      granted: camera.lastPermissionGranted ?? started,
+      detail: started ? 'Speech captions' : camera.lastError,
+    );
+    if (!mounted) return;
+    setState(() {
+      _cameraActive = started;
+      _cameraError = started ? null : camera.lastError;
+    });
+    if (started) await _startListening();
+  }
+
   @override
   void deactivate() {
+    final preview = SignTalkScope.of(context).cameraPreview;
+    unawaited(preview.stop());
     SignTalkScope.of(context).textToSpeech.stop();
     unawaited(_speech?.stopListening());
     super.deactivate();
@@ -96,6 +128,7 @@ class _SpeechToTextScreenState extends State<SpeechToTextScreen> {
     for (final sub in _subs) {
       unawaited(sub.cancel());
     }
+    _captionRestart?.cancel();
     unawaited(_speech?.stopListening());
     _transcript.removeListener(_syncFieldFromTranscript);
     _transcript.dispose();
@@ -128,18 +161,6 @@ class _SpeechToTextScreenState extends State<SpeechToTextScreen> {
     setState(() {});
   }
 
-  Future<void> _stopListening() async {
-    await _speech?.stopListening();
-    setState(() {});
-  }
-
-  Future<void> _retryListening() async {
-    await _stopListening();
-    _lastError = null;
-    setState(() => _statusMessage = 'Retrying…');
-    await _startListening();
-  }
-
   Future<void> _togglePause() async {
     final speech = SignTalkScope.of(context).speechRecognition;
     if (_isPaused) {
@@ -159,40 +180,8 @@ class _SpeechToTextScreenState extends State<SpeechToTextScreen> {
     setState(() {});
   }
 
-  Future<void> _speakTranscript() async {
-    await _runTts(_textController.text);
-  }
-
   Future<void> _stopSpeaking() async {
     await SignTalkScope.of(context).textToSpeech.stop();
-  }
-
-  Future<void> _runTts(String text) async {
-    final prefs = SignTalkScope.preferencesOf(context);
-    final tts = SignTalkScope.of(context).textToSpeech;
-    if (text.trim().isEmpty) {
-      _showSnack('Nothing to speak.');
-      return;
-    }
-    if (!prefs.spokenOutputEnabled) {
-      _showSnack('Spoken output is off in Settings.');
-      return;
-    }
-    await tts.setLanguage(prefs.speechLocale);
-    final outcome = await tts.speak(text, enabled: prefs.spokenOutputEnabled);
-    if (outcome == SpeakOutcome.failed || outcome == SpeakOutcome.unavailable) {
-      _showSnack('Could not speak text.');
-    }
-  }
-
-  void _copyTranscript() {
-    final text = _textController.text.trim();
-    if (text.isEmpty) {
-      _showSnack('Nothing to copy yet.');
-      return;
-    }
-    Clipboard.setData(ClipboardData(text: text));
-    _showSnack('Copied to clipboard.');
   }
 
   void _sendToConversations() {
@@ -205,44 +194,10 @@ class _SpeechToTextScreenState extends State<SpeechToTextScreen> {
     _showSnack('Sent to Conversations — review and send the message there.');
   }
 
-  Future<void> _onLanguageTap() async {
-    final prefs = SignTalkScope.preferencesOf(context);
-    final picked = await showDialog<String>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: const Text('Speech language'),
-        children: [
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(context, 'en_US|English (US)'),
-            child: const Text('English (US)'),
-          ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(context, 'en_IN|English (India)'),
-            child: const Text('English (India)'),
-          ),
-        ],
-      ),
-    );
-    if (picked == null || !mounted) return;
-    final parts = picked.split('|');
-    await prefs.setSpeechLanguage(label: parts[1], locale: parts[0]);
-    if (!mounted) return;
-    SignTalkScope.of(context).speechRecognition.setLocale(parts[0]);
-    setState(() {});
-  }
-
   void _showSnack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
     );
-  }
-
-  Color get _statusColor {
-    if (_lastError != null && !_isListening) return SignTalkColors.callRed;
-    if (_isPaused) return SignTalkColors.secondaryText;
-    if (_isListening) return const Color(0xFF059669);
-    if (!_available) return SignTalkColors.callRed;
-    return SignTalkColors.secondaryText;
   }
 
   @override
@@ -255,107 +210,63 @@ class _SpeechToTextScreenState extends State<SpeechToTextScreen> {
     return ListenableBuilder(
       listenable: tts,
       builder: (context, _) {
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+        return Column(
           children: [
-            _ScreenHeader(
-              onBack: widget.onBack,
-              onSettings: widget.onOpenSettings ?? () => _showSnack('Open the Settings tab for speech preferences.'),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: _ScreenHeader(
+                onBack: widget.onBack,
+                onSettings: widget.onOpenSettings ??
+                    () => _showSnack('Open the Settings tab for speech preferences.'),
+              ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              'Dictate in Chrome, then edit the transcript below.',
-              style: Theme.of(context).textTheme.bodySmall,
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _TalkingCamera(
+                  cameraActive: _cameraActive,
+                  viewType: SignTalkScope.of(context).cameraPreview.viewType,
+                  errorMessage: _cameraError,
+                  caption: _textController.text.trim().isEmpty
+                      ? statusText
+                      : _textController.text,
+                ),
+              ),
             ),
-            const SizedBox(height: 12),
-            _MicrophoneCard(
-              statusText: statusText,
-              statusColor: _statusColor,
-              language: _language,
-              listening: _isListening,
-              available: _available,
-              paused: _isPaused,
-              onLanguageTap: _onLanguageTap,
-              onPrimaryMic: () {
-                if (_isListening) {
-                  unawaited(_stopListening());
-                } else {
-                  unawaited(_startListening());
-                }
-              },
-            ),
-            const SizedBox(height: 12),
-            _TranscriptCard(controller: _textController),
-            const SizedBox(height: 12),
-            Text('Playback', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontSize: 13)),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: tts.isSpeaking ? null : () => unawaited(_speakTranscript()),
-                    icon: const Icon(Icons.volume_up_outlined, size: 18),
-                    label: Text(tts.isSpeaking ? 'Speaking…' : 'Speak'),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => unawaited(_togglePause()),
+                          child: Text(_isPaused ? 'Resume captions' : 'Pause captions'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _clearTranscript,
+                          child: const Text('Clear'),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: tts.isSpeaking ? () => unawaited(_stopSpeaking()) : null,
-                    icon: const Icon(Icons.stop_circle_outlined, size: 18),
-                    label: const Text('Stop'),
+                  const SizedBox(height: 8),
+                  FilledButton(
+                    onPressed: _sendToConversations,
+                    style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(46)),
+                    child: const Text('Send to Conversations'),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Text('Transcript', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontSize: 13)),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _copyTranscript,
-                    icon: const Icon(Icons.copy_outlined, size: 18),
-                    label: const Text('Copy'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _clearTranscript,
-                    icon: const Icon(Icons.delete_outline, size: 18),
-                    label: const Text('Clear'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _available ? () => unawaited(_retryListening()) : null,
-                    icon: const Icon(Icons.refresh, size: 18),
-                    label: const Text('Retry'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => unawaited(_togglePause()),
-                    icon: Icon(_isPaused ? Icons.play_arrow : Icons.pause, size: 18),
-                    label: Text(_isPaused ? 'Resume' : 'Pause'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: _sendToConversations,
-              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-              icon: const Icon(Icons.chat_bubble_outline),
-              label: const Text('Send to Conversations'),
+                  if (tts.isSpeaking)
+                    TextButton(
+                      onPressed: () => unawaited(_stopSpeaking()),
+                      child: const Text('Stop speaking'),
+                    ),
+                ],
+              ),
             ),
           ],
         );
@@ -410,118 +321,66 @@ class _ScreenHeader extends StatelessWidget {
   }
 }
 
-class _MicrophoneCard extends StatelessWidget {
-  const _MicrophoneCard({
-    required this.statusText,
-    required this.statusColor,
-    required this.language,
-    required this.listening,
-    required this.available,
-    required this.paused,
-    required this.onLanguageTap,
-    required this.onPrimaryMic,
+class _TalkingCamera extends StatelessWidget {
+  const _TalkingCamera({
+    required this.cameraActive,
+    required this.viewType,
+    required this.caption,
+    this.errorMessage,
   });
 
-  final String statusText;
-  final Color statusColor;
-  final String language;
-  final bool listening;
-  final bool available;
-  final bool paused;
-  final VoidCallback onLanguageTap;
-  final VoidCallback onPrimaryMic;
+  final bool cameraActive;
+  final String? viewType;
+  final String caption;
+  final String? errorMessage;
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: SignTalkColors.card,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: SignTalkColors.border),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-        child: Column(
-          children: [
-            Semantics(
-              button: true,
-              label: listening ? 'Stop listening' : 'Start listening',
-              child: Material(
-                color: listening ? SignTalkColors.primaryBlue : SignTalkColors.tintBlue,
-                shape: const CircleBorder(),
-                child: InkWell(
-                  onTap: onPrimaryMic,
-                  customBorder: const CircleBorder(),
-                  child: SizedBox(
-                    width: 72,
-                    height: 72,
-                    child: Icon(
-                      listening ? Icons.stop_rounded : Icons.mic,
-                      size: 32,
-                      color: listening ? Colors.white : SignTalkColors.primaryBlue,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(statusText, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: statusColor)),
-            const SizedBox(height: 8),
-            Material(
-              color: SignTalkColors.dividerLight,
-              borderRadius: BorderRadius.circular(999),
-              child: InkWell(
-                onTap: onLanguageTap,
-                borderRadius: BorderRadius.circular(999),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(22),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (cameraActive && viewType != null)
+            HtmlElementView(viewType: viewType!)
+          else
+            ColoredBox(
+              color: const Color(0xFF1C1C1E),
+              child: Center(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(language, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
-                      const Icon(Icons.keyboard_arrow_down, size: 18),
-                    ],
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    errorMessage ?? 'Opening your camera…',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                   ),
                 ),
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _TranscriptCard extends StatelessWidget {
-  const _TranscriptCard({required this.controller});
-
-  final TextEditingController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: SignTalkColors.card,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: SignTalkColors.border),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('Editable transcript', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontSize: 13)),
-            const SizedBox(height: 8),
-            TextField(
-              controller: controller,
-              minLines: 5,
-              maxLines: 10,
-              decoration: const InputDecoration(
-                hintText: 'Tap the microphone and speak, or type here…',
+          Positioned(
+            left: 12,
+            right: 12,
+            bottom: 12,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.72),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                child: Text(
+                  caption,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    height: 1.3,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

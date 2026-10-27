@@ -23,6 +23,7 @@ class StoredChatMessage {
     'kind': kind,
     'body': body,
     'createdAt': createdAt.toIso8601String(),
+    // ignore: use_null_aware_elements
     if (cloudId != null) 'cloudId': cloudId!,
   };
 

@@ -16,8 +16,8 @@ class SignPlanStep {
 
 class TextToSignReference {
   static const String limitationMessage =
-      'Sign videos are not in the app. Follow the words in order. '
-      'Fingerspell any word that is not a known sign.';
+      'Letter and number sign videos are on Learn ISL. '
+      'Follow other words in order. Fingerspell any word that is not a known sign.';
 
   static const Map<String, String> movementNotes = {
     'hello': 'Greeting sign — open hand salute near forehead.',

@@ -1,5 +1,5 @@
 /**
- * Live INCLUDE (263-word Indian Sign Language) recognizer.
+ * Live INCLUDE Indian Sign Language recognizer. Word count comes from lstm_manifest.json.
  * Pose + both hands -> the pretrained OpenHands LSTM, running in the browser.
  */
 import {

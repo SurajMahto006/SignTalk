@@ -359,7 +359,7 @@ class _SignToTextScreenState extends State<SignToTextScreen> {
   Widget build(BuildContext context) {
     final tts = SignTalkScope.of(context).textToSpeech;
     final browserStatus = _islBrowser.isSupported
-        ? 'INCLUDE model in this browser, 263 words'
+        ? 'INCLUDE model in this browser, 262 words'
         : 'In-browser ISL needs Chrome';
 
     return ListenableBuilder(

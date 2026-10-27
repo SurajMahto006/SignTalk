@@ -37,6 +37,7 @@ class _AuthScreenState extends State<AuthScreen> {
     'Non-speaking',
     'Speech difficulty',
     'Hearing',
+    'Normal',
     'Prefer not to say',
   ];
 
@@ -440,7 +441,7 @@ class _AuthScreenState extends State<AuthScreen> {
               : null,
         ),
         const SizedBox(height: 14),
-        _buildTextFieldLabel('Email Address (Optional)'),
+        _buildTextFieldLabel('Email'),
         TextFormField(
           controller: _emailController,
           keyboardType: TextInputType.emailAddress,
@@ -456,6 +457,14 @@ class _AuthScreenState extends State<AuthScreen> {
             ),
             prefixIconConstraints: BoxConstraints(minWidth: 42),
           ),
+          validator: (value) {
+            final email = value?.trim() ?? '';
+            if (email.isEmpty) return 'Enter an email you can open.';
+            if (!email.contains('@') || !email.contains('.')) {
+              return 'Enter a valid email address.';
+            }
+            return null;
+          },
         ),
         const SizedBox(height: 14),
         _buildTextFieldLabel('Person status'),
@@ -652,7 +661,7 @@ class _AuthScreenState extends State<AuthScreen> {
           const SizedBox(width: 6),
           Text(
             _mode == AuthMode.register
-                ? 'Your account is saved when you create it.'
+                ? 'Your account is saved when you create it. Email confirmation codes need a mail service, which is not connected yet.'
                 : 'Continue as guest opens the demo account. Log out any time to come back here.',
             style: TextStyle(
               fontSize: 11,

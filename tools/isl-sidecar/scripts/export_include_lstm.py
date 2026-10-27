@@ -90,14 +90,7 @@ def pack_f32(values: list[float]) -> bytes:
     return bytes(out)
 
 
-def main() -> None:
-    labels = glosses()
-    state = load_state()
-    interesting = [k for k in state if "decoder" in k]
-    print("decoder tensors:")
-    for key in interesting:
-        print(f"  {key} {tuple(state[key].shape)}")
-
+def write_pack(labels: list[str], state: dict[str, torch.Tensor]) -> None:
     needed = []
     for layer in range(4):
         for direction in ("", "_reverse"):
@@ -164,6 +157,41 @@ def main() -> None:
     print(f"wrote {OUT_DIR} ({len(blob)} bytes, {len(labels)} words)")
 
 
+def main() -> None:
+    labels = glosses()
+    state = load_state()
+    interesting = [k for k in state if "decoder" in k]
+    print("decoder tensors:")
+    for key in interesting:
+        print(f"  {key} {tuple(state[key].shape)}")
+    write_pack(labels, state)
+
+
+def export_call_checkpoint(path: Path) -> None:
+    """Pack include_words_best.pt, whose keys are rnn/attn_fc/fc, into the browser names."""
+    blob = torch.load(path, map_location="cpu", weights_only=False)
+    labels = [str(name) for name in blob["labels"]]
+    rename = {
+        "attn_fc1.weight": "decoder.attn_block.fc1.weight",
+        "attn_fc2.weight": "decoder.attn_block.fc2.weight",
+        "fc.weight": "decoder.fc.weight",
+        "fc.bias": "decoder.fc.bias",
+    }
+    state: dict[str, torch.Tensor] = {}
+    for key, value in blob["state"].items():
+        if not torch.is_tensor(value):
+            continue
+        if key.startswith("rnn."):
+            name = "decoder." + key
+        else:
+            name = rename.get(key)
+        if name is None:
+            continue
+        state[name] = value.detach().cpu().contiguous()
+    print(f"call checkpoint epoch {blob.get('epoch')} labels {len(labels)}")
+    write_pack(labels, state)
+
+
 def torch_forward(seq: torch.Tensor, weights: dict[str, torch.Tensor]) -> torch.Tensor:
     hidden = 128
     for layer in range(4):
@@ -203,4 +231,7 @@ def torch_forward(seq: torch.Tensor, weights: dict[str, torch.Tensor]) -> torch.
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1:
+        export_call_checkpoint(Path(sys.argv[1]))
+    else:
+        main()

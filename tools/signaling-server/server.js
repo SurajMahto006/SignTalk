@@ -30,6 +30,7 @@ const MIME = {
   '.webp': 'image/webp',
   '.gif': 'image/gif',
   '.wav': 'audio/wav',
+  '.mp4': 'video/mp4',
   '.mp3': 'audio/mpeg',
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',

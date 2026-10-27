@@ -267,6 +267,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
       preview: text,
     );
     _scrollToBottom();
+    if (!mounted) return;
     SignTalkScope.preferencesOf(context).triggerHapticIfEnabled();
 
     if (_speakAfterSend) {

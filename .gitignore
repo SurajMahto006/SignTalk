@@ -68,3 +68,7 @@ id_ed25519
 
 # Local IDE / OS
 Thumbs.db
+*.sqlite
+*.db
+login-page.png
+**/snapshot.pt

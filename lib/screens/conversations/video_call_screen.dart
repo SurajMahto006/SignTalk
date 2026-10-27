@@ -172,7 +172,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
         _islPollTimer?.cancel();
         _islPollTimer = Timer.periodic(const Duration(milliseconds: 200), (_) => _pollBrowserIsl());
         if (mounted) {
-          setState(() => _islStatus = 'ISL — INCLUDE model, 263 words. Hold each sign about 2 seconds.');
+          setState(() => _islStatus = 'ISL — INCLUDE model, 262 words. Hold each sign about 2 seconds.');
         }
         return;
       }
@@ -613,8 +613,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     await _call.hangUp();
     await _stopCaptions();
     if (!mounted) return;
-    await SignTalkScope.of(context).speechRecognition.stopListening();
-    await SignTalkScope.of(context).cameraPreview.stop();
+    final scope = SignTalkScope.of(context);
+    await scope.speechRecognition.stopListening();
+    await scope.cameraPreview.stop();
   }
 
   Future<void> _endCall() async {
@@ -1321,7 +1322,7 @@ class _GestureDemoHelpSection extends StatelessWidget {
             ),
           ],
           Text(
-            'The call uses the INCLUDE Indian Sign Language model (263 words, including Hello, '
+            'The call uses the INCLUDE Indian Sign Language model (262 words, including Hello, '
             'family, colours, places, and everyday words). Hold a sign for about two seconds. '
             'The word shows on the video and is spoken on the other side. '
             'This is isolated-word recognition, not a full interpreter of every ISL sentence.',

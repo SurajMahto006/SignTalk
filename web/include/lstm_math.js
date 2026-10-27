@@ -32,7 +32,7 @@ function addScaled(out, weights, rows, cols, vector) {
  * @param {Float32Array} frames length T * 54, row-major (T, 54)
  * @param {number} frameCount
  * @param {Record<string, Float32Array>} weights
- * @returns {Float32Array} logits, length 263
+ * @returns {Float32Array} logits, one score per label in the manifest
  */
 export function logitsFromFeatures(frames, frameCount, weights) {
   const hidden = 128;
