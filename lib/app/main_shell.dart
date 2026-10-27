@@ -1,18 +1,14 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import 'sign_talk_scope.dart';
-import '../screens/conversations/contact_list_screen.dart';
+import '../screens/contacts/contacts_screen.dart';
 import '../screens/conversations/conversations_screen.dart';
 import '../screens/conversations/video_call_screen.dart';
 import '../screens/home/home_screen.dart';
-import '../screens/learn/learn_isl_screen.dart';
 import '../screens/logs/logs_screen.dart';
 import '../screens/settings/settings_screen.dart';
 import '../screens/translate/sign_to_text_screen.dart';
 import '../screens/translate/speech_to_text_screen.dart';
-import '../services/auth/auth_service.dart';
 import '../services/permissions/device_permission_status.dart';
 import '../theme/sign_talk_colors.dart';
 
@@ -31,16 +27,15 @@ class _MainShellState extends State<MainShell> {
   String? _activeTool;
   int _conversationsSession = 0;
   String _contactName = 'Demo contact';
-  bool _threadOpen = false;
-  bool _threadBackToHome = true;
 
   static const _tabLabels = ['Home', 'Logs', 'Conversations', 'Settings'];
 
   @override
   Widget build(BuildContext context) {
     final viewportWidth = MediaQuery.sizeOf(context).width;
-    // Fill the Android width. Wider windows are already framed to a phone column.
-    final appWidth = viewportWidth;
+    final appWidth = viewportWidth < 390
+        ? viewportWidth
+        : (viewportWidth < 760 ? 520.0 : 640.0);
     return Scaffold(
       backgroundColor: SignTalkColors.background,
       body: SafeArea(
@@ -58,14 +53,24 @@ class _MainShellState extends State<MainShell> {
                             onClose: () =>
                                 setState(() => _videoCallOpen = false),
                           )
+                        : _activeTool == 'contacts'
+                        ? ContactsScreen(
+                            onBack: _closeTool,
+                            onOpenChat: (name) {
+                              _closeTool();
+                              _openContactConversation(name);
+                            },
+                            onOpenVideoCall: (name) {
+                              _closeTool();
+                              _openContactVideoCall(name);
+                            },
+                          )
                         : _activeTool == 'sign'
                         ? SignToTextScreen(
                             onBack: _closeTool,
                             onOpenSettings: _openSettings,
                             onSendToConversations: _sendSignTextToConversation,
                           )
-                        : _activeTool == 'learn'
-                        ? LearnIslScreen(onBack: _closeTool)
                         : _activeTool == 'speech'
                         ? SpeechToTextScreen(
                             onBack: _closeTool,
@@ -93,7 +98,6 @@ class _MainShellState extends State<MainShell> {
     setState(() {
       _activeTool = null;
       _selectedIndex = index;
-      if (index == 2) _threadOpen = false;
     });
   }
 
@@ -105,8 +109,6 @@ class _MainShellState extends State<MainShell> {
   void _openConversations() => setState(() {
     _activeTool = null;
     _selectedIndex = 2;
-    _threadOpen = true;
-    _threadBackToHome = true;
   });
 
   void _openSettings() => setState(() {
@@ -116,15 +118,9 @@ class _MainShellState extends State<MainShell> {
 
   void _openSignToText() => setState(() => _activeTool = 'sign');
 
-  void _openLearnIsl() => setState(() => _activeTool = 'learn');
-
-  void _openContactList() => setState(() {
-    _activeTool = null;
-    _selectedIndex = 2;
-    _threadOpen = false;
-  });
-
   void _openSpeechToText() => setState(() => _activeTool = 'speech');
+
+  void _openContacts() => setState(() => _activeTool = 'contacts');
 
   void _closeTool() => setState(() => _activeTool = null);
 
@@ -137,8 +133,6 @@ class _MainShellState extends State<MainShell> {
     setState(() {
       _activeTool = null;
       _selectedIndex = 2;
-      _threadOpen = true;
-      _threadBackToHome = true;
     });
   }
 
@@ -147,8 +141,6 @@ class _MainShellState extends State<MainShell> {
     setState(() {
       _activeTool = null;
       _selectedIndex = 2;
-      _threadOpen = true;
-      _threadBackToHome = true;
     });
   }
 
@@ -158,26 +150,21 @@ class _MainShellState extends State<MainShell> {
     _videoCallOpen = true;
   });
 
-  void _openContactConversation(String contactName) {
-    final ownerId =
-        SignTalkScope.authOf(context).currentUser?.userId ??
-        AuthService.demoUserId;
-    unawaited(
-      SignTalkScope.of(context).contacts.ensure(
-        ownerId: ownerId,
-        name: contactName,
-      ),
-    );
+  void _openContactVideoCall(String contactName) {
     setState(() {
+      _activeTool = null;
       _contactName = contactName;
-      _selectedIndex = 2;
-      _threadOpen = true;
-      _threadBackToHome = false;
-      _conversationsSession++;
+      _videoCallOpen = true;
     });
   }
 
-  void _closeThread() => setState(() => _threadOpen = false);
+  void _openContactConversation(String contactName) {
+    setState(() {
+      _contactName = contactName;
+      _selectedIndex = 2;
+      _conversationsSession++;
+    });
+  }
 
   Widget _buildTabBody() {
     return switch (_selectedIndex) {
@@ -185,23 +172,17 @@ class _MainShellState extends State<MainShell> {
         onSignToTextTap: _openSignToText,
         onSpeechToTextTap: _openSpeechToText,
         onOpenConversations: _openConversations,
-        onManageContacts: _openContactList,
+        onOpenContacts: _openContacts,
         onOpenLogs: () => _onTabSelected(1),
-        onLearnIsl: _openLearnIsl,
         onProfileTap: _openSettings,
       ),
       1 => LogsScreen(onOpenConversation: _openContactConversation),
-      2 => _threadOpen
-          ? ConversationsScreen(
-              key: ValueKey(_conversationsSession),
-              contactName: _contactName,
-              onOpenVideoCall: _openVideoCall,
-              onBack: _threadBackToHome ? _goHome : _closeThread,
-              backTooltip: _threadBackToHome
-                  ? 'Back to Home'
-                  : 'Back to contacts',
-            )
-          : ContactListScreen(onOpenContact: _openContactConversation),
+      2 => ConversationsScreen(
+        key: ValueKey(_conversationsSession),
+        contactName: _contactName,
+        onOpenVideoCall: _openVideoCall,
+        onBack: _goHome,
+      ),
       3 => SettingsScreen(permissionStatus: widget.permissionStatus),
       _ => _TabPlaceholder(title: _tabLabels[_selectedIndex]),
     };
@@ -261,11 +242,11 @@ class _SignTalkBottomNav extends StatelessWidget {
         border: Border(top: BorderSide(color: SignTalkColors.border)),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 6, 8, 10),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
         child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            Expanded(
-              child: _NavItem(
+            _NavItem(
               label: 'Home',
               icon: Icons.home,
               selectedIcon: Icons.home,
@@ -273,33 +254,26 @@ class _SignTalkBottomNav extends StatelessWidget {
               selected: selectedIndex == 0,
               onTap: () => onSelected(0),
             ),
-            ),
-            Expanded(
-              child: _NavItem(
+            _NavItem(
               label: 'Logs',
               icon: Icons.history_outlined,
               selectedIcon: Icons.history,
               selected: selectedIndex == 1,
               onTap: () => onSelected(1),
             ),
-            ),
-            Expanded(
-              child: _NavItem(
+            _NavItem(
               label: 'Conversations',
               icon: Icons.chat_bubble_outline,
               selectedIcon: Icons.chat_bubble,
               selected: selectedIndex == 2,
               onTap: () => onSelected(2),
             ),
-            ),
-            Expanded(
-              child: _NavItem(
+            _NavItem(
               label: 'Settings',
               icon: Icons.settings_outlined,
               selectedIcon: Icons.settings,
               selected: selectedIndex == 3,
               onTap: () => onSelected(3),
-            ),
             ),
           ],
         ),
@@ -338,7 +312,7 @@ class _NavItem extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(8),
         child: SizedBox(
-          width: double.infinity,
+          width: 70,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -351,11 +325,8 @@ class _NavItem extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 10,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                   color: color,
                 ),

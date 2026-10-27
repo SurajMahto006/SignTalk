@@ -12,10 +12,6 @@ import '../../services/webrtc/call_media_state.dart';
 import '../../services/webrtc/webrtc_call_config.dart';
 import '../../services/gesture/gesture_demo_labels.dart';
 import '../../services/gesture/gesture_recognizer_service.dart';
-import '../../services/isl/http_isl_recognition_adapter.dart';
-import '../../services/isl/isl_browser_recognizer.dart';
-import '../../services/isl/isl_live_recognition.dart';
-import '../../services/isl/isl_sentence_composer.dart';
 import '../../services/webrtc/webrtc_call_service.dart';
 import '../../theme/sign_talk_colors.dart';
 
@@ -42,11 +38,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   final _captions = SpeechTranscriptController();
   bool _captionsListening = false;
   bool _assistExpanded = false;
-  bool _connectionDetailsExpanded = false;
   bool _connecting = false;
-  bool _closing = false;
-  bool _leavingCall = false;
-  bool _callWasLogged = false;
   SpeechRecognitionService? _speech;
   final List<StreamSubscription<dynamic>> _captionSubs = [];
   final _gestures = createGestureRecognizerService();
@@ -68,44 +60,30 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   String? _remoteDetectLatchedId;
   String? _lastRemoteDetectCaption;
   DateTime? _lastRemoteDetectAt;
-  bool _gestureHelpExpanded = false;
-  final _islLive = IslLiveRecognition();
-  final _islBrowser = createIslBrowserRecognizer();
-  bool _islBrowserActive = false;
-  final _islComposer = IslSentenceComposer();
-  Timer? _islPollTimer;
-  Timer? _islComposerTickTimer;
-  StreamSubscription<IslCaptionMessage>? _islCaptionSub;
-  StreamSubscription<SpeechCaptionMessage>? _speechCaptionSub;
-  Timer? _speechRelayTimer;
-  String _lastSentSpeech = '';
-  String? _partnerSpeech;
-  bool _islPipelineActive = false;
-  bool _islRecognizeBusy = false;
-  String _islStatus = 'ISL idle';
-  String? _localIslSentence;
-  String? _remoteIslSentence;
-  String _lastSentIslSentence = '';
-  String? _islLiveWord;
+  bool _callWasLogged = false;
+  bool _closing = false;
 
   @override
   void initState() {
     super.initState();
-    _signalUrlController = TextEditingController(text: WebRtcCallConfig.signalingUrlForPage());
+    _signalUrlController = TextEditingController(
+      text: WebRtcCallConfig.signalingUrlForPage(),
+    );
     _call.addListener(_syncGesturePipelineWithCall);
     _remoteGestureSub = _call.gestureCaptions.listen(_onRemoteGestureCaption);
-    _islCaptionSub = _call.islCaptions.listen(_onRemoteIslCaption);
-    _speechCaptionSub = _call.speechCaptions.listen(_onRemoteSpeechCaption);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || _closing) return;
       await SignTalkScope.of(context).cameraPreview.stop();
+      if (!mounted || _closing) return;
       await _call.ensureRenderers();
-      if (mounted) setState(() {});
+      if (mounted && !_closing) setState(() {});
       _syncGesturePipelineWithCall();
     });
     _captions.addListener(_syncCaptionsToField);
   }
 
   void _syncGesturePipelineWithCall() {
+    if (_closing) return;
     final localShould = _call.isActive && _call.hasLocalVideo;
     if (localShould && !_gesturePipelineActive) {
       unawaited(_startGesturePipeline());
@@ -119,190 +97,39 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     } else if (!remoteShould && _remoteGesturePipelineActive) {
       _stopRemoteGesturePipeline();
     }
-
-    _syncIslPipelineWithCall();
-  }
-
-  void _syncIslPipelineWithCall() {
-    final should = _call.isActive && _call.hasLocalVideo && _islLive.isSupported;
-    if (should && !_islPipelineActive) {
-      unawaited(_startIslPipeline());
-    } else if (!should && _islPipelineActive) {
-      _stopIslPipeline();
-    }
-  }
-
-  Future<void> _startIslPipeline() async {
-    if (_islPipelineActive) return;
-    _islPipelineActive = true;
-    _islComposer.reset();
-    SignTalkScope.of(context).islRecognition.resetSmoothing();
-    _islPollTimer?.cancel();
-    _islPollTimer = null;
-    _islComposerTickTimer?.cancel();
-    _islComposerTickTimer = Timer.periodic(const Duration(milliseconds: 400), (_) {
-      final utteranceEnded = _islComposer.tick();
-      if (utteranceEnded && mounted) {
-        _localIslSentence = null;
-        _islLiveWord = null;
-        _lastSentIslSentence = '';
-        SignTalkScope.of(context).islRecognition.resetSmoothing();
-        setState(() => _islStatus = 'ISL — ready for next sentence');
-      } else {
-        _syncIslSentenceToUi();
-      }
-    });
-    if (_islBrowser.isSupported) {
-      final ready = await _islBrowser.init();
-      var started = false;
-      if (ready) {
-        for (var attempt = 0; attempt < 24; attempt++) {
-          if (!mounted || !_call.isActive || !_islPipelineActive) return;
-          final videoId = webrtcLocalVideoElementId(_call.localRenderer);
-          if (_islBrowser.start(videoId)) {
-            started = true;
-            break;
-          }
-          await Future<void>.delayed(const Duration(milliseconds: 250));
-        }
-      }
-      if (started) {
-        _islBrowserActive = true;
-        _stopLocalGesturePipeline();
-        _islPollTimer?.cancel();
-        _islPollTimer = Timer.periodic(const Duration(milliseconds: 200), (_) => _pollBrowserIsl());
-        if (mounted) {
-          setState(() => _islStatus = 'ISL — INCLUDE model, 262 words. Hold each sign about 2 seconds.');
-        }
-        return;
-      }
-    }
-
-    _islPollTimer = Timer.periodic(const Duration(milliseconds: 1100), (_) => unawaited(_pollIslFromLocalVideo()));
-    if (mounted) {
-      setState(() => _islStatus = 'ISL — hold signs; pauses build a sentence');
-    }
-    unawaited(_pollIslFromLocalVideo());
-  }
-
-  void _stopIslPipeline() {
-    _islPollTimer?.cancel();
-    _islPollTimer = null;
-    if (_islBrowserActive) {
-      _islBrowser.stop();
-      _islBrowserActive = false;
-    }
-    _islComposerTickTimer?.cancel();
-    _islComposerTickTimer = null;
-    _islPipelineActive = false;
-    if (mounted) {
-      setState(() {
-        _islStatus = 'ISL stopped';
-        _localIslSentence = null;
-      });
-    }
-  }
-
-  void _pollBrowserIsl() {
-    if (!_islBrowserActive || !_call.isActive) return;
-    final hit = _islBrowser.consume();
-    if (hit == null) return;
-    if (hit.status == 'error' && hit.message != null) {
-      if (mounted) setState(() => _islStatus = 'ISL — ${hit.message}');
-      return;
-    }
-    if (!hit.isRecognized) return;
-    _islComposer.observeStableWord(hit.word!);
-    _islLiveWord = _islComposer.liveWordLabel;
-    _syncIslSentenceToUi();
-    _maybeRelayIslCaption(
-      word: hit.word!,
-      confidence: hit.score,
-    );
-    if (mounted) setState(() => _islStatus = 'ISL: ${_islComposer.liveWordLabel}');
-  }
-
-  Future<void> _pollIslFromLocalVideo() async {
-    if (!_islPipelineActive || _islRecognizeBusy || !_call.isActive) return;
-    _islRecognizeBusy = true;
-    final videoId = webrtcLocalVideoElementId(_call.localRenderer);
-    final isl = SignTalkScope.of(context).islRecognition;
-    final result = await _islLive.recognizeFromVideo(isl: isl, videoElementId: videoId, frameCount: 8);
-    if (!mounted) return;
-    _islRecognizeBusy = false;
-
-    if (result.isSuccess && result.label != null) {
-      _islComposer.observeStableWord(result.label!);
-      _islLiveWord = _islComposer.liveWordLabel;
-      _syncIslSentenceToUi();
-      _maybeRelayIslCaption(
-        word: _islComposer.glosses.isNotEmpty ? _islComposer.glosses.last : result.label!,
-        confidence: result.confidence ?? 0,
-      );
-      setState(() => _islStatus = 'ISL word: ${result.label}');
-    } else if (result.uncertain) {
-      setState(() => _islStatus = result.message ?? 'ISL detecting…');
-    }
-  }
-
-  void _maybeRelayIslCaption({required String word, required double confidence}) {
-    final sentence = _islComposer.readableSentence.isNotEmpty
-        ? _islComposer.readableSentence
-        : _islComposer.liveWordLabel;
-    if (sentence.isEmpty) return;
-    if (sentence == _lastSentIslSentence) return;
-    _lastSentIslSentence = sentence;
-    _call.sendIslCaption(word: word, sentence: sentence, confidence: confidence);
-  }
-
-  void _syncIslSentenceToUi() {
-    _islLiveWord = _islComposer.liveWordLabel.isNotEmpty ? _islComposer.liveWordLabel : _islLiveWord;
-    final text = _islComposer.readableSentence.isNotEmpty
-        ? _islComposer.readableSentence
-        : _islComposer.displayText;
-    if (text.isEmpty) return;
-    _localIslSentence = text;
-    _assistController.text = text;
-    _assistController.selection = TextSelection.collapsed(offset: text.length);
-    if (mounted) setState(() {});
-  }
-
-  void _onRemoteIslCaption(IslCaptionMessage msg) {
-    if (!mounted) return;
-    setState(() {
-      _remoteIslSentence = msg.sentence.isNotEmpty ? msg.sentence : msg.word;
-    });
-    final prefs = SignTalkScope.preferencesOf(context);
-    if (prefs.spokenOutputEnabled && msg.sentence.isNotEmpty) {
-      unawaited(SignTalkScope.of(context).textToSpeech.speak(
-            msg.sentence,
-            enabled: true,
-          ));
-    }
   }
 
   Future<void> _startGesturePipeline() async {
+    if (_closing) return;
     if (_gesturePipelineActive) return;
     if (!_gestures.isSupported) {
+      if (!mounted || _closing) return;
       setState(() => _gestureStatus = 'Gestures: Chrome/web only');
       return;
     }
+    if (!mounted || _closing) return;
     setState(() => _gestureStatus = 'Loading gesture model…');
     final init = await _gestures.init();
-    if (!mounted) return;
+    if (!mounted || _closing) return;
     if (!init.ready) {
-      setState(() => _gestureStatus = 'Gesture model failed: ${init.error ?? 'unknown'}');
+      setState(
+        () =>
+            _gestureStatus = 'Gesture model failed: ${init.error ?? 'unknown'}',
+      );
       return;
     }
     GestureStartResult? start;
     String lastVideoId = '';
     for (var attempt = 0; attempt < 24; attempt++) {
-      if (!mounted || !_call.isActive) return;
+      if (!mounted || _closing || !_call.isActive) return;
       lastVideoId = webrtcLocalVideoElementId(_call.localRenderer);
       start = _gestures.startOnVideoElementId(lastVideoId);
       if (start.ok) break;
       if (attempt == 0 || attempt % 4 == 0) {
-        setState(() => _gestureStatus = 'Waiting for your camera preview… (${attempt + 1}/24)');
+        setState(
+          () => _gestureStatus =
+              'Waiting for your camera preview… (${attempt + 1}/24)',
+        );
       }
       await Future<void>.delayed(const Duration(milliseconds: 250));
     }
@@ -312,7 +139,11 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
             'Gesture camera hook failed: ${start?.error ?? lastVideoId}. Retrying…',
       );
       Future<void>.delayed(const Duration(seconds: 2), () {
-        if (mounted && _call.isActive && _call.hasLocalVideo && !_gesturePipelineActive) {
+        if (mounted &&
+            !_closing &&
+            _call.isActive &&
+            _call.hasLocalVideo &&
+            !_gesturePipelineActive) {
           unawaited(_startGesturePipeline());
         }
       });
@@ -320,8 +151,13 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     }
     _gesturePipelineActive = true;
     _gesturePollTimer?.cancel();
-    _gesturePollTimer = Timer.periodic(const Duration(milliseconds: 150), (_) => _pollLocalGesture());
-    setState(() => _gestureStatus = 'Detecting — show HELLO, YES, or STOP pose');
+    _gesturePollTimer = Timer.periodic(
+      const Duration(milliseconds: 150),
+      (_) => _pollLocalGesture(),
+    );
+    setState(
+      () => _gestureStatus = 'Detecting — show HELLO, YES, or STOP pose',
+    );
   }
 
   void _stopLocalGesturePipeline() {
@@ -329,7 +165,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _gesturePollTimer = null;
     _gestures.stop();
     _gesturePipelineActive = false;
-    if (mounted) {
+    if (mounted && !_closing) {
       setState(() {
         _gestureStatus = 'Gestures stopped';
         _localGestureCaption = null;
@@ -342,7 +178,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _remoteGesturePollTimer = null;
     _gestures.stopRemote();
     _remoteGesturePipelineActive = false;
-    if (mounted) {
+    if (mounted && !_closing) {
       setState(() => _remoteGestureCaption = null);
     }
   }
@@ -353,15 +189,18 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   }
 
   Future<void> _startRemoteGesturePipeline() async {
+    if (_closing) return;
     if (_remoteGesturePipelineActive) return;
     if (!_gestures.isSupported) return;
     final init = await _gestures.init();
-    if (!mounted || !init.ready) return;
+    if (!mounted || _closing || !init.ready) return;
 
     GestureStartResult? start;
     var lastVideoId = '';
     for (var attempt = 0; attempt < 24; attempt++) {
-      if (!mounted || !_call.isActive || !_call.hasRemoteVideo) return;
+      if (!mounted || _closing || !_call.isActive || !_call.hasRemoteVideo) {
+        return;
+      }
       lastVideoId = webrtcLocalVideoElementId(_call.remoteRenderer);
       start = _gestures.startRemoteOnVideoElementId(lastVideoId);
       if (start.ok) break;
@@ -369,7 +208,11 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     }
     if (start == null || !start.ok) {
       Future<void>.delayed(const Duration(seconds: 2), () {
-        if (mounted && _call.isActive && _call.hasRemoteVideo && !_remoteGesturePipelineActive) {
+        if (mounted &&
+            !_closing &&
+            _call.isActive &&
+            _call.hasRemoteVideo &&
+            !_remoteGesturePipelineActive) {
           unawaited(_startRemoteGesturePipeline());
         }
       });
@@ -377,11 +220,14 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     }
     _remoteGesturePipelineActive = true;
     _remoteGesturePollTimer?.cancel();
-    _remoteGesturePollTimer =
-        Timer.periodic(const Duration(milliseconds: 150), (_) => _pollRemoteVideoGesture());
+    _remoteGesturePollTimer = Timer.periodic(
+      const Duration(milliseconds: 150),
+      (_) => _pollRemoteVideoGesture(),
+    );
   }
 
   void _pollRemoteVideoGesture() {
+    if (_closing) return;
     final det = _gestures.consumeRemoteLatest();
     if (det == null) return;
     if (det.status == 'tracking') {
@@ -393,7 +239,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
     final caption = GestureDemoLabels.captionForMediaPipeGesture(det.gesture);
     if (caption == null) return;
-    if (!_remoteDetectReleaseArmed && _remoteDetectLatchedId == det.gesture) return;
+    if (!_remoteDetectReleaseArmed && _remoteDetectLatchedId == det.gesture) {
+      return;
+    }
 
     final now = DateTime.now();
     if (_lastRemoteDetectCaption == caption &&
@@ -409,17 +257,23 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   }
 
   void _pollLocalGesture() {
+    if (_closing) return;
     final det = _gestures.consumeLatest();
     if (det == null) return;
     if (det.status == 'error' && det.message != null) {
-      if (mounted) setState(() => _gestureStatus = 'Error — ${det.message}');
+      if (mounted && !_closing) {
+        setState(() => _gestureStatus = 'Error — ${det.message}');
+      }
       return;
     }
     if (det.status == 'tracking') {
       _gestureReleaseArmed = true;
       _latchedGestureId = null;
-      if (mounted) {
-        setState(() => _gestureStatus = 'Detecting — open palm, thumb up, or closed fist');
+      if (mounted && !_closing) {
+        setState(
+          () => _gestureStatus =
+              'Detecting — open palm, thumb up, or closed fist',
+        );
       }
       return;
     }
@@ -427,9 +281,10 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
     final caption = GestureDemoLabels.captionForMediaPipeGesture(det.gesture);
     if (caption == null) {
-      if (mounted) {
+      if (mounted && !_closing) {
         setState(
-          () => _gestureStatus = 'Detecting — only HELLO / YES / STOP are sent in this demo',
+          () => _gestureStatus =
+              'Detecting — only HELLO / YES / STOP are sent in this demo',
         );
       }
       return;
@@ -450,7 +305,12 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       score: det.score,
     );
     if (!sent) {
-      if (mounted) setState(() => _gestureStatus = 'Error — signaling not joined (caption not sent)');
+      if (mounted && !_closing) {
+        setState(
+          () => _gestureStatus =
+              'Error — signaling not joined (caption not sent)',
+        );
+      }
       return;
     }
 
@@ -458,7 +318,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _lastSentAt = now;
     _gestureReleaseArmed = false;
     _latchedGestureId = det.gesture;
-    if (mounted) {
+    if (mounted && !_closing) {
       setState(() {
         _localGestureCaption = caption;
         _gestureStatus = 'Gesture recognized — $caption';
@@ -468,13 +328,13 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   Future<void> _onRemoteGestureCaption(GestureCaptionMessage msg) async {
     final label = msg.label.trim();
-    if (label.isEmpty || !mounted) return;
+    if (label.isEmpty || !mounted || _closing) return;
     await _applyPartnerCaption(label);
   }
 
   /// Partner caption on the main video + speak the word only (HELLO / YES / STOP).
   Future<void> _applyPartnerCaption(String label) async {
-    if (!mounted) return;
+    if (!mounted || _closing) return;
     setState(() => _remoteGestureCaption = label);
     final now = DateTime.now();
     if (_lastSpokenRemoteLabel == label &&
@@ -493,7 +353,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
     final outcome = await tts.speak(label, enabled: true);
     if (outcome == SpeakOutcome.failed && kDebugMode) {
-      debugPrint('[SignTalk] Caption TTS failed for "$label" (caption still shown on screen).');
+      debugPrint(
+        '[SignTalk] Caption TTS failed for "$label" (caption still shown on screen).',
+      );
     }
   }
 
@@ -503,46 +365,19 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       _assistController.text = t;
       _assistController.selection = TextSelection.collapsed(offset: t.length);
     }
-    _scheduleSpeechRelay();
     if (mounted) setState(() {});
-  }
-
-  void _scheduleSpeechRelay() {
-    _speechRelayTimer?.cancel();
-    _speechRelayTimer = Timer(const Duration(milliseconds: 350), () {
-      final text = _captions.text.trim();
-      if (text.isEmpty || text == _lastSentSpeech) return;
-      final clipped = text.length > 240 ? text.substring(text.length - 240) : text;
-      if (_call.sendSpeechCaption(clipped)) {
-        _lastSentSpeech = clipped;
-      }
-    });
-  }
-
-  void _onRemoteSpeechCaption(SpeechCaptionMessage msg) {
-    final text = msg.text.trim();
-    if (text.isEmpty || !mounted) return;
-    setState(() => _partnerSpeech = text);
   }
 
   @override
   void deactivate() {
-    _leavingCall = true;
-    _stopGesturePipeline();
-    _stopIslPipeline();
-    unawaited(_releaseCallDevices());
     super.deactivate();
   }
 
   @override
   void dispose() {
     _stopGesturePipeline();
-    _stopIslPipeline();
     _call.removeListener(_syncGesturePipelineWithCall);
     unawaited(_remoteGestureSub?.cancel());
-    unawaited(_islCaptionSub?.cancel());
-    unawaited(_speechCaptionSub?.cancel());
-    _speechRelayTimer?.cancel();
     for (final s in _captionSubs) {
       unawaited(s.cancel());
     }
@@ -571,6 +406,48 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _toggleMic() async {
+    if (_closing) return;
+    try {
+      await _call.setMicEnabled(!_call.micEnabled);
+    } catch (error) {
+      if (mounted && !_closing) {
+        _showSnack('Could not change microphone state: $error');
+      }
+    }
+  }
+
+  Future<void> _toggleCamera() async {
+    if (_closing) return;
+    try {
+      await _call.setCameraEnabled(!_call.cameraEnabled);
+    } catch (error) {
+      if (mounted && !_closing) {
+        _showSnack('Could not change camera state: $error');
+      }
+    }
+  }
+
+  Future<void> _hostCall() async {
+    if (_connecting) return;
+    SignTalkScope.of(context).textToSpeech.primeWebSpeechFromUserGesture();
+    _connecting = true;
+    setState(() {});
+    try {
+      await _releaseCameraPreviewForCall();
+      await _call.connectToRoom(
+        signalingUrl: _signalUrlController.text,
+        roomId: _roomController.text,
+        asHost: true,
+      );
+    } on ArgumentError catch (e) {
+      _showSnack(e.message ?? e.toString());
+    } finally {
+      _connecting = false;
+      if (mounted) setState(() {});
+    }
+  }
+
   Future<void> _joinCall() async {
     if (_connecting) return;
     SignTalkScope.of(context).textToSpeech.primeWebSpeechFromUserGesture();
@@ -591,45 +468,25 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     }
   }
 
-  Future<void> _recordCallIfNeeded() async {
-    if (_callWasLogged || !_call.isActive) return;
-    _callWasLogged = true;
-    await SignTalkScope.of(context).activityLogs.addCall(
-      ownerId:
-          SignTalkScope.authOf(context).currentUser?.userId ?? 'demo',
-      contactName: widget.contactName,
-      roomId: _roomController.text.trim(),
-    );
-  }
-
   Future<void> _closeCall() async {
     if (_closing) return;
     _closing = true;
-    await _recordCallIfNeeded();
-    if (mounted) widget.onClose();
-  }
-
-  Future<void> _releaseCallDevices() async {
-    await _call.hangUp();
-    await _stopCaptions();
-    if (!mounted) return;
     final scope = SignTalkScope.of(context);
-    await scope.speechRecognition.stopListening();
-    await scope.cameraPreview.stop();
-  }
+    widget.onClose();
 
-  Future<void> _endCall() async {
-    await _recordCallIfNeeded();
-    _stopGesturePipeline();
-    _stopIslPipeline();
-    await _releaseCallDevices();
-    if (mounted) {
-      setState(() {
-        _remoteGestureCaption = null;
-        _remoteIslSentence = null;
-        _partnerSpeech = null;
-      });
+    if (_call.isActive && !_callWasLogged) {
+      _callWasLogged = true;
+      await scope.activityLogs.addCall(
+        contactName: widget.contactName,
+        roomId: _roomController.text.trim(),
+      );
     }
+    _call.removeListener(_syncGesturePipelineWithCall);
+    await _remoteGestureSub?.cancel();
+    _remoteGestureSub = null;
+    _stopGesturePipeline();
+    await _stopCaptions();
+    await _call.hangUp();
   }
 
   Future<void> _startCaptions() async {
@@ -661,7 +518,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _captionSubs.clear();
     await _speech?.stopListening();
     await _call.restoreMicAfterSpeechRecognition();
-    if (mounted && !_leavingCall) setState(() => _captionsListening = false);
+    if (mounted && !_closing) {
+      setState(() => _captionsListening = false);
+    }
   }
 
   Future<void> _speakAssistText() async {
@@ -681,16 +540,10 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   Future<void> _tryIslFromCall() async {
     final isl = SignTalkScope.of(context).islRecognition;
-    final raw = isl.rawAdapter;
-    if (raw is HttpIslRecognitionAdapter) {
-      await raw.refreshHealth();
-    }
-    final videoId = webrtcLocalVideoElementId(_call.localRenderer);
-    final result = await _islLive.recognizeFromVideo(isl: isl, videoElementId: videoId);
+    final result = await isl.recognizeClip(jpegFrames: const []);
     _showSnack(result.message ?? isl.rawAdapter.displayName);
     if (result.isSuccess && result.label != null) {
-      _islComposer.observeStableWord(result.label!);
-      _syncIslSentenceToUi();
+      _assistController.text = result.label!;
     }
   }
 
@@ -705,9 +558,12 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     return ListenableBuilder(
       listenable: _call,
       builder: (context, _) {
-        final mediaConnected = _call.connectionState == CallConnectionState.connected;
-        final showCaptions = SignTalkScope.preferencesOf(context).captionsEnabled;
-        final islStatus = SignTalkScope.of(context).islRecognition.rawAdapter.displayName;
+        final mediaConnected =
+            _call.connectionState == CallConnectionState.connected;
+        final islStatus = SignTalkScope.of(context)
+            .islRecognition
+            .rawAdapter
+            .displayName;
         final inCall = _call.isActive;
 
         return ColoredBox(
@@ -718,9 +574,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                 _VideoCallTopBar(
                   onDark: inCall,
                   assistExpanded: _assistExpanded,
-                  contactName: widget.contactName,
                   onClose: () => unawaited(_closeCall()),
-                  onToggleAssist: () => setState(() => _assistExpanded = !_assistExpanded),
+                  onToggleAssist: () =>
+                      setState(() => _assistExpanded = !_assistExpanded),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
@@ -738,16 +594,9 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 11,
-                            color: inCall ? Colors.white60 : SignTalkColors.secondaryText,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _islStatus,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: inCall ? Colors.white54 : SignTalkColors.secondaryText,
+                            color: inCall
+                                ? Colors.white60
+                                : SignTalkColors.secondaryText,
                           ),
                         ),
                       ],
@@ -764,9 +613,8 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                             roomController: _roomController,
                             signalUrlController: _signalUrlController,
                             connecting: _connecting,
-                            showSignalingField: WebRtcCallConfig.needsSeparateSignalingTunnel ||
-                                _signalUrlController.text.trim().isEmpty,
                             onCheckMedia: () => unawaited(_checkMedia()),
+                            onHost: () => unawaited(_hostCall()),
                             onJoin: () => unawaited(_joinCall()),
                           ),
                           Padding(
@@ -774,17 +622,13 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(16),
                               child: SizedBox(
-                                height: 200,
+                                height: 300,
                                 child: _CallVideoStack(
                                   call: _call,
                                   mediaConnected: mediaConnected,
                                   showRemotePlaceholder: true,
-                                  localCaption: showCaptions ? _localGestureCaption : null,
-                                  remoteCaption: showCaptions ? _remoteGestureCaption : null,
-                                  islLocalSentence: showCaptions ? _localIslSentence : null,
-                                  islLocalLiveWord: showCaptions ? _islLiveWord : null,
-                                  islPartnerSentence: showCaptions ? _remoteIslSentence : null,
-                          partnerSpeech: showCaptions ? _partnerSpeech : null,
+                                  localCaption: _localGestureCaption,
+                                  remoteCaption: _remoteGestureCaption,
                                 ),
                               ),
                             ),
@@ -803,48 +647,26 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                           call: _call,
                           mediaConnected: mediaConnected,
                           showRemotePlaceholder: true,
-                          localCaption: showCaptions ? _localGestureCaption : null,
-                          remoteCaption: showCaptions ? _remoteGestureCaption : null,
-                          islLocalSentence: showCaptions ? _localIslSentence : null,
-                          islLocalLiveWord: showCaptions ? _islLiveWord : null,
-                          islPartnerSentence: showCaptions ? _remoteIslSentence : null,
-                          partnerSpeech: showCaptions ? _partnerSpeech : null,
+                          localCaption: _localGestureCaption,
+                          remoteCaption: _remoteGestureCaption,
                         ),
                       ),
                     ),
                   ),
                 _CallControls(
-                  enabled: _call.localMediaReady || _call.isActive,
+                  enabled: true,
                   micOn: _call.micEnabled,
                   cameraOn: _call.cameraEnabled,
-                  captionsOn: _captionsListening,
                   onDark: inCall,
-                  onToggleMic: () => unawaited(_call.setMicEnabled(!_call.micEnabled)),
-                  onToggleCamera: () => unawaited(_call.setCameraEnabled(!_call.cameraEnabled)),
-                  onToggleCaptions: () => unawaited(
-                    _captionsListening ? _stopCaptions() : _startCaptions(),
-                  ),
-                  onEnd: () => unawaited(_endCall()),
+                  onToggleMic: () => unawaited(_toggleMic()),
+                  onToggleCamera: () => unawaited(_toggleCamera()),
+                  onEnd: () => unawaited(_closeCall()),
                 ),
-                if (!inCall || MediaQuery.sizeOf(context).height >= 700) ...[
-                  _ConnectionDetailsSection(
-                    call: _call,
-                    connecting: _connecting,
-                    initiallyExpanded: _connectionDetailsExpanded,
-                    onExpansionChanged: (v) => setState(() => _connectionDetailsExpanded = v),
-                  ),
-                  _GestureDemoHelpSection(
-                    initiallyExpanded: _gestureHelpExpanded,
-                    onExpansionChanged: (v) => setState(() => _gestureHelpExpanded = v),
-                  ),
-                ],
                 if (_assistExpanded)
                   _AssistancePanel(
                     controller: _assistController,
                     captionsListening: _captionsListening,
                     islStatus: islStatus,
-                    islSentenceHint: _localIslSentence ?? _islComposer.displayText,
-                    remoteIslSentence: _remoteIslSentence,
                     onStartCaptions: () => unawaited(_startCaptions()),
                     onStopCaptions: () => unawaited(_stopCaptions()),
                     onSpeak: () => unawaited(_speakAssistText()),
@@ -863,14 +685,12 @@ class _VideoCallTopBar extends StatelessWidget {
   const _VideoCallTopBar({
     required this.onDark,
     required this.assistExpanded,
-    required this.contactName,
     required this.onClose,
     required this.onToggleAssist,
   });
 
   final bool onDark;
   final bool assistExpanded;
-  final String contactName;
   final VoidCallback onClose;
   final VoidCallback onToggleAssist;
 
@@ -888,14 +708,23 @@ class _VideoCallTopBar extends StatelessWidget {
           ),
           Expanded(
             child: Text(
-              contactName,
+              'Live video call',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: fg),
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: fg,
+              ),
             ),
           ),
           IconButton(
             onPressed: onToggleAssist,
-            icon: Icon(assistExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_up, color: fg),
+            icon: Icon(
+              assistExpanded
+                  ? Icons.keyboard_arrow_down
+                  : Icons.keyboard_arrow_up,
+              color: fg,
+            ),
             tooltip: 'Assistance panel',
           ),
         ],
@@ -921,14 +750,21 @@ class _EssentialStatusLine extends StatelessWidget {
     final text = connecting ? 'Working…' : _friendlyStatus(call, error);
     final color = error != null
         ? SignTalkColors.callRed
-        : (onDark ? Colors.white.withValues(alpha: 0.85) : SignTalkColors.secondaryText);
+        : (onDark
+              ? Colors.white.withValues(alpha: 0.85)
+              : SignTalkColors.secondaryText);
 
     return Text(
       text,
       maxLines: 2,
       overflow: TextOverflow.ellipsis,
       textAlign: TextAlign.center,
-      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, height: 1.25, color: color),
+      style: TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w500,
+        height: 1.25,
+        color: color,
+      ),
     );
   }
 
@@ -971,10 +807,6 @@ class _CallVideoStack extends StatelessWidget {
     required this.showRemotePlaceholder,
     this.localCaption,
     this.remoteCaption,
-    this.islLocalSentence,
-    this.islLocalLiveWord,
-    this.islPartnerSentence,
-    this.partnerSpeech,
   });
 
   final WebRtcCallService call;
@@ -982,10 +814,6 @@ class _CallVideoStack extends StatelessWidget {
   final bool showRemotePlaceholder;
   final String? localCaption;
   final String? remoteCaption;
-  final String? islLocalSentence;
-  final String? islLocalLiveWord;
-  final String? islPartnerSentence;
-  final String? partnerSpeech;
 
   @override
   Widget build(BuildContext context) {
@@ -1000,52 +828,31 @@ class _CallVideoStack extends StatelessWidget {
                   objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
                 )
               : (showRemotePlaceholder
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Text(
-                          mediaConnected ? 'Waiting for remote video…' : 'Remote participant',
-                          style: const TextStyle(color: Colors.white70, fontSize: 13),
-                          textAlign: TextAlign.center,
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            mediaConnected
+                                ? 'Waiting for remote video…'
+                                : 'Remote participant',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
                         ),
-                      ),
-                    )
-                  : null),
+                      )
+                    : null),
         ),
-        if (partnerSpeech != null && partnerSpeech!.isNotEmpty)
-          Positioned(
-            left: 10,
-            right: 110,
-            top: 10,
-            child: _SpeechBanner(text: partnerSpeech!),
-          ),
-        if (islPartnerSentence != null && islPartnerSentence!.isNotEmpty)
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: _IslVideoSubtitleBar(
-              title: 'Partner',
-              liveWord: null,
-              sentence: islPartnerSentence!,
-            ),
-          )
-        else if (remoteCaption != null)
+        if (remoteCaption != null)
           Positioned(
             left: 8,
             right: 8,
             bottom: 8,
-            child: _GestureCaptionChip(text: remoteCaption!, tone: _CaptionTone.remote),
-          ),
-        if (islLocalSentence != null && islLocalSentence!.isNotEmpty)
-          Positioned(
-            left: 0,
-            right: 96,
-            bottom: islPartnerSentence != null && islPartnerSentence!.isNotEmpty ? 52 : 0,
-            child: _IslVideoSubtitleBar(
-              title: 'You',
-              liveWord: islLocalLiveWord,
-              sentence: islLocalSentence!,
+            child: _GestureCaptionChip(
+              text: remoteCaption!,
+              tone: _CaptionTone.remote,
             ),
           ),
         Positioned(
@@ -1056,7 +863,11 @@ class _CallVideoStack extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: Colors.white24, width: 1.5),
               boxShadow: const [
-                BoxShadow(color: Color(0x66000000), blurRadius: 8, offset: Offset(0, 2)),
+                BoxShadow(
+                  color: Color(0x66000000),
+                  blurRadius: 8,
+                  offset: Offset(0, 2),
+                ),
               ],
             ),
             child: ClipRRect(
@@ -1072,7 +883,11 @@ class _CallVideoStack extends StatelessWidget {
                       child: call.localRenderer.srcObject != null
                           ? RTCVideoView(call.localRenderer, mirror: true)
                           : const Center(
-                              child: Icon(Icons.videocam_off, color: Colors.white54, size: 26),
+                              child: Icon(
+                                Icons.videocam_off,
+                                color: Colors.white54,
+                                size: 26,
+                              ),
                             ),
                     ),
                     if (localCaption != null)
@@ -1099,61 +914,6 @@ class _CallVideoStack extends StatelessWidget {
 
 enum _CaptionTone { local, remote }
 
-class _IslVideoSubtitleBar extends StatelessWidget {
-  const _IslVideoSubtitleBar({
-    required this.title,
-    required this.sentence,
-    this.liveWord,
-  });
-
-  final String title;
-  final String? liveWord;
-  final String sentence;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.bottomCenter,
-          end: Alignment.topCenter,
-          colors: [
-            Colors.black.withValues(alpha: 0.82),
-            Colors.black.withValues(alpha: 0.35),
-            Colors.transparent,
-          ],
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (liveWord != null && liveWord!.isNotEmpty)
-              Text(
-                '$title · signing: $liveWord',
-                style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500),
-              ),
-            Text(
-              sentence,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                height: 1.25,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _GestureCaptionChip extends StatelessWidget {
   const _GestureCaptionChip({
     required this.text,
@@ -1177,7 +937,10 @@ class _GestureCaptionChip extends StatelessWidget {
         border: Border.all(color: Colors.white24),
       ),
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: compact ? 4 : 10, vertical: compact ? 3 : 6),
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 4 : 10,
+          vertical: compact ? 3 : 6,
+        ),
         child: Text(
           text,
           maxLines: compact ? 2 : 3,
@@ -1195,215 +958,23 @@ class _GestureCaptionChip extends StatelessWidget {
   }
 }
 
-class _ConnectionDetailsSection extends StatelessWidget {
-  const _ConnectionDetailsSection({
-    required this.call,
-    required this.connecting,
-    required this.initiallyExpanded,
-    required this.onExpansionChanged,
-  });
 
-  final WebRtcCallService call;
-  final bool connecting;
-  final bool initiallyExpanded;
-  final ValueChanged<bool> onExpansionChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: SignTalkColors.card,
-      child: ExpansionTile(
-        initiallyExpanded: initiallyExpanded,
-        onExpansionChanged: onExpansionChanged,
-        tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-        title: const Text(
-          'Connection details',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: SignTalkColors.primaryText),
-        ),
-        subtitle: Text(
-          connecting ? 'Working…' : (call.statusMessage ?? 'Diagnostics'),
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        children: [
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              _MediaChip(
-                label: _CallDiagnostics.signalingLabel(call.signalingState),
-                ok: call.signalingState == CallSignalingState.joined,
-              ),
-              _MediaChip(
-                label: _CallDiagnostics.mediaPathLabel(call.mediaPathState),
-                ok: call.mediaPathState == CallMediaPathState.connected,
-              ),
-              _MediaChip(
-                label: _CallDiagnostics.accessLabel(call.mediaAccessState),
-                ok: call.mediaAccessState == CallMediaAccessState.granted,
-              ),
-              _MediaChip(label: call.hasRemoteAudio ? 'Remote audio' : 'No remote audio', ok: call.hasRemoteAudio),
-            ],
-          ),
-          if (call.mediaAccessDetail != null) ...[
-            const SizedBox(height: 8),
-            Text(call.mediaAccessDetail!, style: Theme.of(context).textTheme.bodySmall),
-          ],
-          if (!WebRtcCallConfig.pageIsSecureContext) ...[
-            const SizedBox(height: 8),
-            Text(
-              WebRtcCallConfig.secureContextHint,
-              style: TextStyle(fontSize: 11, color: SignTalkColors.callRed.withValues(alpha: 0.9)),
-            ),
-          ],
-          const SizedBox(height: 8),
-          Text(
-            'Tracks — local: ${call.hasLocalVideo ? 1 : 0}v/${call.hasLocalAudio ? 1 : 0}a · '
-            'remote: ${call.hasRemoteVideo ? 1 : 0}v/${call.hasRemoteAudio ? 1 : 0}a · '
-            'remote events: ${call.remoteTracksReceived}',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 11),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'ICE: ${call.lastIceConnectionState} · peer: ${call.lastPeerConnectionState}',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 11),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Gesture captions use the signaling WebSocket (type gesture_caption) when a data channel is not configured.',
-            style: TextStyle(fontSize: 11, color: SignTalkColors.secondaryText, height: 1.35),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Run the signaling server on your PC (port 8765). Use ws://127.0.0.1:8765 on this device or your LAN IP / wss:// when the app is served over HTTPS. Allow inbound TCP 8765 on Private networks in Windows Firewall if needed.',
-            style: TextStyle(fontSize: 11, color: SignTalkColors.secondaryText, height: 1.35),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _GestureDemoHelpSection extends StatelessWidget {
-  const _GestureDemoHelpSection({
-    required this.initiallyExpanded,
-    required this.onExpansionChanged,
-  });
-
-  final bool initiallyExpanded;
-  final ValueChanged<bool> onExpansionChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: SignTalkColors.card,
-      child: ExpansionTile(
-        initiallyExpanded: initiallyExpanded,
-        onExpansionChanged: onExpansionChanged,
-        tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-        title: const Text(
-          'Demo gestures (prototype)',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: SignTalkColors.primaryText),
-        ),
-        subtitle: Text(
-          GestureDemoLabels.prototypeDisclaimer,
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        children: [
-          for (final g in GestureDemoLabels.demoGestures) ...[
-            Text(
-              g.caption,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: SignTalkColors.primaryText),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Text(g.poseHint, style: Theme.of(context).textTheme.bodySmall?.copyWith(height: 1.35)),
-            ),
-          ],
-          Text(
-            'The call uses the INCLUDE Indian Sign Language model (262 words, including Hello, '
-            'family, colours, places, and everyday words). Hold a sign for about two seconds. '
-            'The word shows on the video and is spoken on the other side. '
-            'This is isolated-word recognition, not a full interpreter of every ISL sentence.',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 11, height: 1.35),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'After each caption, lower your hand briefly before repeating the same gesture.',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 11, height: 1.35),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-abstract final class _CallDiagnostics {
-  static String signalingLabel(CallSignalingState s) => switch (s) {
-        CallSignalingState.joined => 'Signaling joined',
-        CallSignalingState.connecting => 'Signaling…',
-        CallSignalingState.disconnected => 'Signaling lost',
-        CallSignalingState.failed => 'Signaling failed',
-        _ => 'Signaling idle',
-      };
-
-  static String mediaPathLabel(CallMediaPathState s) => switch (s) {
-        CallMediaPathState.connected => 'Media connected',
-        CallMediaPathState.negotiating => 'Negotiating',
-        CallMediaPathState.preparingLocalMedia => 'Opening camera/mic',
-        CallMediaPathState.reconnecting => 'Reconnecting',
-        CallMediaPathState.failed => 'Media failed',
-        _ => 'Media idle',
-      };
-
-  static String accessLabel(CallMediaAccessState s) => switch (s) {
-        CallMediaAccessState.granted => 'Permissions OK',
-        CallMediaAccessState.requesting => 'Requesting…',
-        CallMediaAccessState.denied => 'Permission denied',
-        CallMediaAccessState.unavailable => 'No device',
-        CallMediaAccessState.error => 'Media error',
-        _ => 'Media not checked',
-      };
-}
-
-class _MediaChip extends StatelessWidget {
-  const _MediaChip({required this.label, required this.ok});
-
-  final String label;
-  final bool ok;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: ok ? SignTalkColors.tintBlue : SignTalkColors.card,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: ok ? SignTalkColors.primaryBlue.withValues(alpha: 0.4) : SignTalkColors.border),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        child: Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w500)),
-      ),
-    );
-  }
-}
 
 class _LobbyPanel extends StatelessWidget {
   const _LobbyPanel({
     required this.roomController,
     required this.signalUrlController,
     required this.connecting,
-    required this.showSignalingField,
     required this.onCheckMedia,
+    required this.onHost,
     required this.onJoin,
   });
 
   final TextEditingController roomController;
   final TextEditingController signalUrlController;
   final bool connecting;
-  final bool showSignalingField;
   final VoidCallback onCheckMedia;
+  final VoidCallback onHost;
   final VoidCallback onJoin;
 
   @override
@@ -1412,40 +983,28 @@ class _LobbyPanel extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
       child: Column(
         children: [
-          Text(
-            'Open SignTalk on both phones. Use the same room name, then press Join call. The first person waits. The second person connects.',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: SignTalkColors.secondaryText,
-                  height: 1.35,
-                ),
+          if (WebRtcCallConfig.needsSeparateSignalingTunnel) ...[
+            Text(
+              WebRtcCallConfig.tunnelSignalingSetupHint,
+              style: Theme.of(context).textTheme.bodySmall
+                  ?.copyWith(color: SignTalkColors.primaryBlue, height: 1.35),
+            ),
+            const SizedBox(height: 8),
+          ],
+          TextField(
+            controller: signalUrlController,
+            decoration: InputDecoration(
+              labelText: 'Signaling WebSocket URL',
+              hintText: WebRtcCallConfig.needsSeparateSignalingTunnel
+                  ? 'wss://your-signaling-tunnel.trycloudflare.com'
+                  : 'wss:// or ws://…',
+            ),
           ),
           const SizedBox(height: 10),
-          if (showSignalingField) ...[
-            if (WebRtcCallConfig.needsSeparateSignalingTunnel) ...[
-              Text(
-                WebRtcCallConfig.tunnelSignalingSetupHint,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: SignTalkColors.primaryBlue,
-                      height: 1.35,
-                    ),
-              ),
-              const SizedBox(height: 8),
-            ],
-            TextField(
-              controller: signalUrlController,
-              decoration: InputDecoration(
-                labelText: 'Signaling WebSocket URL',
-                hintText: WebRtcCallConfig.needsSeparateSignalingTunnel
-                    ? 'wss://your-signaling-tunnel.trycloudflare.com'
-                    : 'wss:// or ws://…',
-              ),
-            ),
-            const SizedBox(height: 10),
-          ],
           TextField(
             controller: roomController,
             decoration: const InputDecoration(
-              labelText: 'Room name (same on both phones)',
+              labelText: 'Room ID (same on both devices)',
             ),
           ),
           const SizedBox(height: 8),
@@ -1457,44 +1016,24 @@ class _LobbyPanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: connecting ? null : onJoin,
-              child: const Text('Join call'),
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton(
+                  onPressed: connecting ? null : onHost,
+                  child: const Text('Host call'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: connecting ? null : onJoin,
+                  child: const Text('Join call'),
+                ),
+              ),
+            ],
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _SpeechBanner extends StatelessWidget {
-  const _SpeechBanner({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: const Color(0xF0143D36),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Text(
-          text,
-          maxLines: 3,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            height: 1.25,
-          ),
-        ),
       ),
     );
   }
@@ -1505,22 +1044,18 @@ class _CallControls extends StatelessWidget {
     required this.enabled,
     required this.micOn,
     required this.cameraOn,
-    required this.captionsOn,
     required this.onDark,
     required this.onToggleMic,
     required this.onToggleCamera,
-    required this.onToggleCaptions,
     required this.onEnd,
   });
 
   final bool enabled;
   final bool micOn;
   final bool cameraOn;
-  final bool captionsOn;
   final bool onDark;
   final VoidCallback onToggleMic;
   final VoidCallback onToggleCamera;
-  final VoidCallback onToggleCaptions;
   final VoidCallback onEnd;
 
   @override
@@ -1541,12 +1076,6 @@ class _CallControls extends StatelessWidget {
             label: cameraOn ? 'Video off' : 'Video on',
             onDark: onDark,
             onTap: enabled ? onToggleCamera : null,
-          ),
-          _RoundBtn(
-            icon: captionsOn ? Icons.closed_caption : Icons.closed_caption_disabled,
-            label: captionsOn ? 'Captions on' : 'Captions',
-            onDark: onDark,
-            onTap: enabled ? onToggleCaptions : null,
           ),
           _RoundBtn(
             icon: Icons.call_end,
@@ -1579,13 +1108,20 @@ class _RoundBtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final disabled = onTap == null;
-    final bg = color ??
+    final bg =
+        color ??
         (disabled
-            ? (onDark ? Colors.white12 : SignTalkColors.border.withValues(alpha: 0.5))
-            : (onDark ? Colors.white.withValues(alpha: 0.14) : SignTalkColors.card));
+            ? (onDark
+                  ? Colors.white12
+                  : SignTalkColors.border.withValues(alpha: 0.5))
+            : (onDark
+                  ? Colors.white.withValues(alpha: 0.14)
+                  : SignTalkColors.card));
     final iconColor = disabled
         ? SignTalkColors.secondaryText
-        : (color != null ? Colors.white : (onDark ? Colors.white : SignTalkColors.primaryText));
+        : (color != null
+              ? Colors.white
+              : (onDark ? Colors.white : SignTalkColors.primaryText));
     final labelColor = onDark ? Colors.white70 : SignTalkColors.secondaryText;
 
     return Semantics(
@@ -1609,7 +1145,11 @@ class _RoundBtn extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          Text(label, style: TextStyle(fontSize: 11, color: labelColor), textAlign: TextAlign.center),
+          Text(
+            label,
+            style: TextStyle(fontSize: 11, color: labelColor),
+            textAlign: TextAlign.center,
+          ),
         ],
       ),
     );
@@ -1621,8 +1161,6 @@ class _AssistancePanel extends StatelessWidget {
     required this.controller,
     required this.captionsListening,
     required this.islStatus,
-    required this.islSentenceHint,
-    required this.remoteIslSentence,
     required this.onStartCaptions,
     required this.onStopCaptions,
     required this.onSpeak,
@@ -1632,8 +1170,6 @@ class _AssistancePanel extends StatelessWidget {
   final TextEditingController controller;
   final bool captionsListening;
   final String islStatus;
-  final String islSentenceHint;
-  final String? remoteIslSentence;
   final VoidCallback onStartCaptions;
   final VoidCallback onStopCaptions;
   final VoidCallback onSpeak;
@@ -1651,12 +1187,14 @@ class _AssistancePanel extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('Assistance (optional)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-            Text('ISL: $islStatus', style: Theme.of(context).textTheme.bodySmall),
-            if (islSentenceHint.isNotEmpty)
-              Text('Your sentence: $islSentenceHint', style: Theme.of(context).textTheme.bodySmall),
-            if (remoteIslSentence != null && remoteIslSentence!.isNotEmpty)
-              Text('Partner: $remoteIslSentence', style: Theme.of(context).textTheme.bodySmall),
+            const Text(
+              'Assistance (optional)',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+            Text(
+              'ISL: $islStatus',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
             const SizedBox(height: 6),
             TextField(
               controller: controller,
@@ -1673,17 +1211,27 @@ class _AssistancePanel extends StatelessWidget {
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: captionsListening ? onStopCaptions : onStartCaptions,
-                    child: Text(captionsListening ? 'Stop captions' : 'Captions'),
+                    onPressed: captionsListening
+                        ? onStopCaptions
+                        : onStartCaptions,
+                    child: Text(
+                      captionsListening ? 'Stop captions' : 'Captions',
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: FilledButton(onPressed: onSpeak, child: const Text('Speak')),
+                  child: FilledButton(
+                    onPressed: onSpeak,
+                    child: const Text('Speak'),
+                  ),
                 ),
               ],
             ),
-            TextButton(onPressed: onTryIsl, child: const Text('ISL adapter status')),
+            TextButton(
+              onPressed: onTryIsl,
+              child: const Text('ISL adapter status'),
+            ),
           ],
         ),
       ),

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../app/sign_talk_scope.dart';
 import '../../theme/sign_talk_colors.dart';
-import '../../widgets/notice_sheet.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({
@@ -10,33 +9,22 @@ class HomeScreen extends StatelessWidget {
     required this.onSignToTextTap,
     required this.onSpeechToTextTap,
     required this.onOpenConversations,
-    this.onManageContacts,
+    this.onOpenContacts,
     this.onOpenLogs,
-    this.onLearnIsl,
     this.onProfileTap,
   });
 
   final VoidCallback onSignToTextTap;
   final VoidCallback onSpeechToTextTap;
   final VoidCallback onOpenConversations;
-  final VoidCallback? onManageContacts;
+  final VoidCallback? onOpenContacts;
   final VoidCallback? onOpenLogs;
-  final VoidCallback? onLearnIsl;
   final VoidCallback? onProfileTap;
 
   @override
   Widget build(BuildContext context) {
-    final scope = SignTalkScope.of(context);
-    final user = scope.authService.currentUser;
-    final ownerId = user?.userId ?? 'demo';
+    final user = SignTalkScope.authOf(context).currentUser;
     final name = user?.name.trim().split(RegExp(r'\s+')).first ?? 'Demo User';
-    final hasNotices = scope.notices
-        .collect(
-          permissions: scope.permissionStatus,
-          preferences: SignTalkScope.preferencesOf(context),
-          logs: scope.activityLogs.entriesFor(ownerId),
-        )
-        .isNotEmpty;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -46,11 +34,9 @@ class HomeScreen extends StatelessWidget {
           children: [
             _HomeHeader(
               onProfileTap: onProfileTap,
-              showNoticeBadge: hasNotices,
+              onNotificationsTap: () => _showNotice(context),
             ),
-            const SizedBox(height: 14),
-            const _AccountBar(),
-            const SizedBox(height: 18),
+            const SizedBox(height: 20),
             _HeroCard(userName: name, onStartConversation: onOpenConversations),
             const SizedBox(height: 26),
             _SectionHeading(
@@ -116,9 +102,9 @@ class HomeScreen extends StatelessWidget {
             const SizedBox(height: 12),
             _QuickActions(
               wide: wide,
-              onContacts: onManageContacts ?? onOpenConversations,
+              onContacts: onOpenContacts ?? onOpenConversations,
               onHistory: onOpenLogs ?? onOpenConversations,
-              onLearn: onLearnIsl ?? onSignToTextTap,
+              onLearn: onSignToTextTap,
               onSettings: onProfileTap ?? onOpenConversations,
             ),
           ],
@@ -127,16 +113,24 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
+  void _showNotice(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('You are all caught up.'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
 }
 
 class _HomeHeader extends StatelessWidget {
   const _HomeHeader({
     required this.onProfileTap,
-    required this.showNoticeBadge,
+    required this.onNotificationsTap,
   });
 
   final VoidCallback? onProfileTap;
-  final bool showNoticeBadge;
+  final VoidCallback onNotificationsTap;
 
   @override
   Widget build(BuildContext context) {
@@ -147,14 +141,33 @@ class _HomeHeader extends StatelessWidget {
         Container(
           width: 44,
           height: 44,
-          decoration: const BoxDecoration(
-            color: SignTalkColors.primaryBlue,
-            shape: BoxShape.circle,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: SignTalkColors.primaryBlue.withValues(alpha: 0.15),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
-          child: const Icon(
-            Icons.back_hand_outlined,
-            color: Colors.white,
-            size: 25,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.asset(
+              'assets/images/signtalk-logo.png',
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) => Container(
+                decoration: const BoxDecoration(
+                  color: SignTalkColors.primaryBlue,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.back_hand_outlined,
+                  color: Colors.white,
+                  size: 25,
+                ),
+              ),
+            ),
           ),
         ),
         const SizedBox(width: 10),
@@ -182,7 +195,11 @@ class _HomeHeader extends StatelessWidget {
             ],
           ),
         ),
-        NoticeBellButton(showBadge: showNoticeBadge),
+        _RoundIconButton(
+          icon: Icons.notifications_none_rounded,
+          tooltip: 'Notifications',
+          onTap: onNotificationsTap,
+        ),
         const SizedBox(width: 8),
         Material(
           color: SignTalkColors.primaryBlue,
@@ -219,96 +236,40 @@ class _HomeHeader extends StatelessWidget {
   }
 }
 
-class _AccountBar extends StatelessWidget {
-  const _AccountBar();
+class _RoundIconButton extends StatelessWidget {
+  const _RoundIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final user = SignTalkScope.authOf(context).currentUser;
-    final userId = user?.userId ?? 'demo';
-    final isGuest = userId == 'demo';
-    final title = isGuest ? 'Guest demo' : (user?.name ?? 'Account');
-    final detail = isGuest
-        ? 'Log out to sign in or create an account'
-        : '@$userId';
-    return DecoratedBox(
-      decoration: BoxDecoration(
+    return Tooltip(
+      message: tooltip,
+      child: Material(
         color: SignTalkColors.card,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: SignTalkColors.border),
-        boxShadow: const [SignTalkColors.cardShadow],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
-        child: Row(
-          children: [
-            Icon(
-              isGuest ? Icons.person_outline : Icons.verified_user_outlined,
-              size: 20,
-              color: SignTalkColors.primaryBlue,
+        shape: const CircleBorder(
+          side: BorderSide(color: SignTalkColors.border),
+        ),
+        child: Semantics(
+          button: true,
+          label: tooltip,
+          child: GestureDetector(
+            onTap: onTap,
+            child: SizedBox(
+              width: 44,
+              height: 44,
+              child: Icon(icon, color: SignTalkColors.primaryText, size: 23),
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: SignTalkColors.primaryText,
-                    ),
-                  ),
-                  Text(
-                    detail,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: SignTalkColors.secondaryText,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            TextButton(
-              onPressed: () => _confirmLogout(context, isGuest: isGuest),
-              child: const Text('Log out'),
-            ),
-          ],
+          ),
         ),
       ),
     );
-  }
-
-  Future<void> _confirmLogout(BuildContext context, {required bool isGuest}) async {
-    final shouldLogout = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Log out'),
-        content: Text(
-          isGuest
-              ? 'Leave the guest demo and return to sign in?'
-              : 'Return to sign in? This account stays saved.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Log out'),
-          ),
-        ],
-      ),
-    );
-    if (shouldLogout == true && context.mounted) {
-      await SignTalkScope.authOf(context).logout();
-    }
   }
 }
 
@@ -338,18 +299,15 @@ class _HeroCard extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final phone = constraints.maxWidth < 560;
-            return Stack(
+        child: Stack(
           children: [
-            Positioned(
-              right: phone ? -70 : -34,
-              bottom: phone ? -80 : -55,
-              child: _HeroIllustration(compact: phone),
+            const Positioned(
+              right: -34,
+              bottom: -55,
+              child: _HeroIllustration(),
             ),
             Padding(
-              padding: EdgeInsets.fromLTRB(22, 22, phone ? 22 : 150, 22),
+              padding: const EdgeInsets.fromLTRB(22, 22, 150, 22),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -375,11 +333,11 @@ class _HeroCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  Text(
+                  const Text(
                     'Communication,\nwithout barriers.',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: phone ? 28 : 30,
+                      fontSize: 30,
                       height: 1.06,
                       fontWeight: FontWeight.w800,
                       letterSpacing: -0.9,
@@ -412,8 +370,6 @@ class _HeroCard extends StatelessWidget {
               ),
             ),
           ],
-            );
-          },
         ),
       ),
     );
@@ -421,39 +377,35 @@ class _HeroCard extends StatelessWidget {
 }
 
 class _HeroIllustration extends StatelessWidget {
-  const _HeroIllustration({this.compact = false});
-
-  final bool compact;
+  const _HeroIllustration();
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: compact ? 160 : 205,
-      height: compact ? 160 : 205,
+      width: 205,
+      height: 205,
       child: Stack(
         alignment: Alignment.center,
         children: [
           Container(
-            width: compact ? 140 : 190,
-            height: compact ? 140 : 190,
+            width: 190,
+            height: 190,
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.14),
               shape: BoxShape.circle,
             ),
           ),
           const Icon(Icons.people_alt_rounded, size: 132, color: Colors.white),
-          if (!compact) ...[
-            const Positioned(
-              top: 18,
-              right: 8,
-              child: _Bubble(icon: Icons.back_hand_rounded, label: 'Sign'),
-            ),
-            const Positioned(
-              bottom: 25,
-              left: 4,
-              child: _Bubble(icon: Icons.chat_rounded, label: 'Hello'),
-            ),
-          ],
+          Positioned(
+            top: 18,
+            right: 8,
+            child: _Bubble(icon: Icons.back_hand_rounded, label: 'Sign'),
+          ),
+          Positioned(
+            bottom: 25,
+            left: 4,
+            child: _Bubble(icon: Icons.chat_rounded, label: 'Hello'),
+          ),
         ],
       ),
     );
@@ -511,18 +463,15 @@ class _SectionHeading extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Flexible(
-          child: Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              color: SignTalkColors.primaryText,
-            ),
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+            color: SignTalkColors.primaryText,
           ),
         ),
+        const Spacer(),
         TextButton.icon(
           onPressed: onAction,
           iconAlignment: IconAlignment.end,
@@ -530,9 +479,7 @@ class _SectionHeading extends StatelessWidget {
           label: Text(actionLabel),
           style: TextButton.styleFrom(
             foregroundColor: SignTalkColors.primaryBlue,
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            minimumSize: const Size(0, 36),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            padding: EdgeInsets.zero,
             textStyle: const TextStyle(fontWeight: FontWeight.w700),
           ),
         ),

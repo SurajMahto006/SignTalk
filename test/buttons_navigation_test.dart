@@ -22,9 +22,12 @@ void main() {
       await tester.pumpWidget(const SignTalkApp());
       await tester.pumpAndSettle();
 
-      expect(find.text('Continue as guest'), findsOneWidget);
-      await tester.ensureVisible(find.text('Continue as guest'));
-      await tester.tap(find.text('Continue as guest'));
+      // Authenticate using demo account to enter the application
+      expect(find.text('Fill Demo Account (@demo_user)'), findsOneWidget);
+      await tester.tap(find.text('Fill Demo Account (@demo_user)'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Sign In to SignTalk'));
       await tester.pumpAndSettle();
 
       // 1. Verify Home screen buttons
@@ -34,7 +37,8 @@ void main() {
       expect(find.text('Start a Conversation'), findsOneWidget);
 
       // 2. Tap profile button on Home -> navigates to Settings
-      await tester.tap(find.text('DU'));
+      final profileBtn = find.byType(InkWell).first;
+      await tester.tap(profileBtn);
       await tester.pumpAndSettle();
       expect(find.text('Settings'), findsWidgets);
       expect(find.text('Accessibility'), findsOneWidget);

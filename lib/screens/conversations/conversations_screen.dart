@@ -1,24 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../app/sign_talk_scope.dart';
-import '../../services/auth/auth_service.dart';
-import '../../services/communication/chat_time.dart';
-import '../../services/communication/conversation_store.dart';
 import '../../services/isl/text_to_sign_reference.dart';
-import '../../widgets/sign_plan_card.dart';
 import '../../services/speech/speech_recognition_service.dart';
 import '../../services/speech/text_to_speech_service.dart';
 import '../../theme/sign_talk_colors.dart';
-
-String _captionBody(BuildContext context, ChatMessage message) {
-  if (SignTalkScope.preferencesOf(context).captionsEnabled) {
-    return message.body;
-  }
-  return 'Captions are off';
-}
 
 enum ConversationInputMode { type, speak, translate }
 
@@ -29,14 +17,12 @@ class ChatMessage {
     required this.kind,
     required this.body,
     required this.timeLabel,
-    required this.createdAt,
     this.showDelivered = false,
   });
 
   final ChatMessageKind kind;
   final String body;
   final String timeLabel;
-  final DateTime createdAt;
   final bool showDelivered;
 }
 
@@ -46,13 +32,11 @@ class ConversationsScreen extends StatefulWidget {
     required this.contactName,
     required this.onOpenVideoCall,
     required this.onBack,
-    this.backTooltip = 'Back to Home',
   });
 
   final String contactName;
   final VoidCallback onOpenVideoCall;
   final VoidCallback onBack;
-  final String backTooltip;
 
   @override
   State<ConversationsScreen> createState() => _ConversationsScreenState();
@@ -69,8 +53,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   final List<ChatMessage> _messages = [];
   bool _speakAfterSend = true;
   bool _loadedSpeakPreference = false;
-  int _savedMessageCount = -1;
-  List<SignPlanStep> _signPlan = const [];
+  String? _translateHint;
   bool _pendingRecognizedSign = false;
   SpeechRecognitionService? _speechRecognition;
 
@@ -83,43 +66,6 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
           .spokenOutputEnabled;
       _loadedSpeakPreference = true;
     }
-    _restoreSavedMessages();
-  }
-
-  String _accountId() {
-    return SignTalkScope.authOf(context).currentUser?.userId ??
-        AuthService.demoUserId;
-  }
-
-  void _restoreSavedMessages() {
-    final saved = SignTalkScope.of(context).conversations.messagesFor(
-      ownerId: _accountId(),
-      contactName: widget.contactName,
-    );
-    if (saved.length == _savedMessageCount) return;
-    if (_messages.isNotEmpty && saved.length <= _messages.length) {
-      _savedMessageCount = saved.length;
-      return;
-    }
-    _messages
-      ..clear()
-      ..addAll(saved.map(_chatFromStored));
-    _savedMessageCount = saved.length;
-  }
-
-  ChatMessage _chatFromStored(StoredChatMessage message) {
-    final kind = switch (message.kind) {
-      'recognizedSign' => ChatMessageKind.recognizedSign,
-      'spoken' => ChatMessageKind.spoken,
-      _ => ChatMessageKind.typed,
-    };
-    return ChatMessage(
-      kind: kind,
-      body: message.body,
-      timeLabel: _formatTime(message.createdAt),
-      createdAt: message.createdAt,
-      showDelivered: kind == ChatMessageKind.recognizedSign,
-    );
   }
 
   @override
@@ -232,37 +178,20 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
             _ => ChatMessageKind.typed,
           };
     _pendingRecognizedSign = false;
-    final sentAt = DateTime.now();
 
     setState(() {
       _messages.add(
         ChatMessage(
           kind: kind,
           body: text,
-          timeLabel: _formatTime(sentAt),
-          createdAt: sentAt,
+          timeLabel: _formatTime(DateTime.now()),
           showDelivered: kind == ChatMessageKind.recognizedSign,
         ),
       );
       _inputController.clear();
-      _signPlan = const [];
+      _translateHint = null;
     });
-    await scope.conversations.append(
-      ownerId: scope.authService.currentUser?.userId ?? AuthService.demoUserId,
-      contactName: widget.contactName,
-      kind: kind.name,
-      body: text,
-      createdAt: sentAt,
-    );
-    _savedMessageCount = scope.conversations
-        .messagesFor(
-          ownerId:
-              scope.authService.currentUser?.userId ?? AuthService.demoUserId,
-          contactName: widget.contactName,
-        )
-        .length;
     await scope.activityLogs.addChat(
-      ownerId: scope.authService.currentUser?.userId ?? AuthService.demoUserId,
       contactName: widget.contactName,
       preview: text,
     );
@@ -308,71 +237,6 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     if (outcome == SpeakOutcome.failed || outcome == SpeakOutcome.unavailable) {
       _showSnack('Could not speak this message.');
     }
-  }
-
-  Future<void> _messageActions(ChatMessage message) async {
-    final index = _messages.indexOf(message);
-    if (index < 0) return;
-    final action = await showModalBottomSheet<String>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.copy_rounded),
-              title: const Text('Copy message'),
-              onTap: () => Navigator.pop(context, 'copy'),
-            ),
-            ListTile(
-              leading: const Icon(
-                Icons.delete_outline,
-                color: SignTalkColors.callRed,
-              ),
-              title: const Text('Delete message'),
-              onTap: () => Navigator.pop(context, 'delete'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (!mounted || action == null) return;
-    if (action == 'copy') {
-      await Clipboard.setData(ClipboardData(text: message.body));
-      _showSnack('Message copied.');
-      return;
-    }
-    final ownerId =
-        SignTalkScope.authOf(context).currentUser?.userId ??
-        AuthService.demoUserId;
-    setState(() => _messages.removeAt(index));
-    _savedMessageCount = _messages.length;
-    await SignTalkScope.of(context).conversations.removeMessage(
-      ownerId: ownerId,
-      contactName: widget.contactName,
-      index: index,
-    );
-  }
-
-  List<Object> _chatRows() {
-    final rows = <Object>[];
-    DateTime? previousDay;
-    for (final message in _messages) {
-      final day = DateTime(
-        message.createdAt.year,
-        message.createdAt.month,
-        message.createdAt.day,
-      );
-      if (previousDay != day) {
-        rows.add(message.createdAt);
-        previousDay = day;
-      }
-      rows.add(message);
-    }
-    return rows;
   }
 
   String _formatTime(DateTime time) {
@@ -443,15 +307,8 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                   }
                   setState(() {
                     _messages.clear();
-                    _signPlan = const [];
+                    _translateHint = null;
                   });
-                  _savedMessageCount = 0;
-                  unawaited(
-                    SignTalkScope.of(context).conversations.clearContact(
-                      ownerId: _accountId(),
-                      contactName: widget.contactName,
-                    ),
-                  );
                   _showSnack('Conversation cleared.');
                 },
               ),
@@ -469,7 +326,6 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
         _ConversationsHeader(
           contactName: widget.contactName,
           onBack: widget.onBack,
-          backTooltip: widget.backTooltip,
           onVideoCall: widget.onOpenVideoCall,
           onMore: _showMoreOptions,
         ),
@@ -479,37 +335,32 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
               : ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                  itemCount: _chatRows().length,
+                  itemCount: _messages.length + 1,
                   itemBuilder: (context, index) {
-                    final row = _chatRows()[index];
-                    if (row is DateTime) {
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Center(
-                          child: _DatePill(
-                            label: chatDayLabel(row, DateTime.now()),
-                          ),
-                        ),
+                    if (index == 0) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: Center(child: _DatePill(label: 'Today, 14 Oct')),
                       );
                     }
-                    final message = row as ChatMessage;
-                    return GestureDetector(
-                      onLongPress: () => unawaited(_messageActions(message)),
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _MessageBubble(
-                          message: message,
-                          onSpeak: () => unawaited(_speakMessage(message.body)),
-                        ),
+                    final message = _messages[index - 1];
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _MessageBubble(
+                        message: message,
+                        onSpeak: () => unawaited(_speakMessage(message.body)),
                       ),
                     );
                   },
                 ),
         ),
-        if (_mode == ConversationInputMode.translate && _signPlan.isNotEmpty)
+        if (_mode == ConversationInputMode.translate && _translateHint != null)
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: SignPlanCard(steps: _signPlan),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              _translateHint!,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
           ),
         _ComposerSection(
           mode: _mode,
@@ -523,29 +374,16 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
             );
           },
           onTextChanged: (v) => setState(() {
-            _signPlan = _mode == ConversationInputMode.translate
-                ? TextToSignReference.planForText(v)
-                : const [];
+            _translateHint = _mode == ConversationInputMode.translate
+                ? TextToSignReference.hintForText(v)
+                : null;
           }),
-          onQuickReply: (phrase) {
-            final current = _inputController.text.trim();
-            final next = current.isEmpty ? phrase : '$current $phrase';
-            setState(() {
-              _inputController.text = next;
-              _inputController.selection = TextSelection.collapsed(
-                offset: next.length,
-              );
-              if (_mode == ConversationInputMode.translate) {
-                _signPlan = TextToSignReference.planForText(next);
-              }
-            });
-          },
           onModeChanged: (mode) {
             setState(() {
               _mode = mode;
-              _signPlan = mode == ConversationInputMode.translate
-                  ? TextToSignReference.planForText(_inputController.text)
-                  : const [];
+              _translateHint = mode == ConversationInputMode.translate
+                  ? TextToSignReference.hintForText(_inputController.text)
+                  : null;
             });
             if (mode != ConversationInputMode.speak) {
               unawaited(
@@ -565,14 +403,12 @@ class _ConversationsHeader extends StatelessWidget {
   const _ConversationsHeader({
     required this.contactName,
     required this.onBack,
-    required this.backTooltip,
     required this.onVideoCall,
     required this.onMore,
   });
 
   final String contactName;
   final VoidCallback onBack;
-  final String backTooltip;
   final VoidCallback onVideoCall;
   final VoidCallback onMore;
 
@@ -584,7 +420,7 @@ class _ConversationsHeader extends StatelessWidget {
         children: [
           _HeaderIconButton(
             icon: Icons.arrow_back_ios_new,
-            tooltip: backTooltip,
+            tooltip: 'Back to Home',
             onPressed: onBack,
           ),
           const SizedBox(width: 12),
@@ -786,7 +622,7 @@ class _TypedBubble extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            _captionBody(context, message),
+            message.body,
             style: const TextStyle(
               fontSize: 14.5,
               height: 1.45,
@@ -873,7 +709,7 @@ class _SignBubble extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      _captionBody(context, message),
+                      message.body,
                       style: const TextStyle(
                         fontSize: 14.5,
                         height: 1.35,
@@ -966,7 +802,7 @@ class _SpokenBubble extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      _captionBody(context, message),
+                      message.body,
                       style: const TextStyle(
                         fontSize: 14.5,
                         height: 1.35,
@@ -1039,7 +875,6 @@ class _ComposerSection extends StatelessWidget {
     required this.controller,
     required this.onSpeakAfterSendChanged,
     required this.onTextChanged,
-    required this.onQuickReply,
     required this.onModeChanged,
     required this.onSend,
   });
@@ -1050,7 +885,6 @@ class _ComposerSection extends StatelessWidget {
   final TextEditingController controller;
   final ValueChanged<bool> onSpeakAfterSendChanged;
   final ValueChanged<String> onTextChanged;
-  final ValueChanged<String> onQuickReply;
   final ValueChanged<ConversationInputMode> onModeChanged;
   final VoidCallback onSend;
 
@@ -1116,30 +950,6 @@ class _ComposerSection extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          SizedBox(
-            height: 36,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: [
-                for (final phrase in const [
-                  'Hello',
-                  'Thank you',
-                  'Please',
-                  'Help',
-                  'Yes',
-                  'No',
-                ])
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ActionChip(
-                      label: Text(phrase),
-                      onPressed: () => onQuickReply(phrase),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
           Row(
             children: [
               Expanded(

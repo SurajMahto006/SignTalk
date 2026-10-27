@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../app/sign_talk_scope.dart';
-import '../../services/auth/auth_service.dart';
 import '../../services/logs/activity_log_service.dart';
 import '../../theme/sign_talk_colors.dart';
 
@@ -16,11 +15,7 @@ class LogsScreen extends StatelessWidget {
     return ListenableBuilder(
       listenable: logs,
       builder: (context, _) {
-        final ownerId =
-            SignTalkScope.authOf(context).currentUser?.userId ??
-            AuthService.demoUserId;
-        final mine = logs.entriesFor(ownerId);
-        final contacts = _groupContacts(mine);
+        final contacts = _groupContacts(logs.entries);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -55,8 +50,8 @@ class LogsScreen extends StatelessWidget {
                     ),
                   ),
                   _DeleteButton(
-                    enabled: mine.isNotEmpty,
-                    onPressed: () => _confirmClear(context, logs, ownerId),
+                    enabled: logs.entries.isNotEmpty,
+                    onPressed: () => _confirmClear(context, logs),
                   ),
                 ],
               ),
@@ -113,15 +108,14 @@ class LogsScreen extends StatelessWidget {
   Future<void> _confirmClear(
     BuildContext context,
     ActivityLogService logs,
-    String ownerId,
   ) async {
-    if (logs.entriesFor(ownerId).isEmpty) return;
+    if (logs.entries.isEmpty) return;
     final clear = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete activity history?'),
         content: const Text(
-          'This removes your chat and call history on this phone. Other accounts keep theirs.',
+          'This will permanently remove saved chat and video-call history from this device.',
         ),
         actions: [
           TextButton(
@@ -140,7 +134,7 @@ class LogsScreen extends StatelessWidget {
     );
     if (clear != true || !context.mounted) return;
     try {
-      await logs.clearOwner(ownerId);
+      await logs.clear();
     } catch (_) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -4,9 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../app/sign_talk_scope.dart';
-import '../../services/isl/isl_browser_recognizer.dart';
+import '../../services/isl/isl_live_recognition.dart';
 import '../../services/isl/text_to_sign_reference.dart';
-import '../../widgets/sign_plan_card.dart';
 import '../../services/speech/text_to_speech_service.dart';
 import '../../theme/sign_talk_colors.dart';
 
@@ -28,24 +27,21 @@ class SignToTextScreen extends StatefulWidget {
 
 class _SignToTextScreenState extends State<SignToTextScreen> {
   static const _placeholder =
-      'Start the camera, then turn on Live ISL recognition. You can also type here.';
-  static const _previewVideoId = 'signtalk-camera-preview';
+      'Sign recognition is not connected. Type or paste text here to use Speak Text.';
 
   final _textController = TextEditingController();
-  final _islBrowser = createIslBrowserRecognizer();
   bool _cameraActive = false;
   bool _isPaused = false;
   bool _cameraBusy = false;
   String? _cameraError;
   bool _recognitionBusy = false;
   String? _recognitionStatus;
-  List<SignPlanStep> _signPlan = const [];
+  String? _textToSignHint;
   bool _lastTextFromModel = false;
   bool _liveIslActive = false;
-  bool _browserStarting = false;
-  bool _oneShotWaiting = false;
-  int _browserGeneration = 0;
-  Timer? _browserPoll;
+  Timer? _liveIslTimer;
+  bool _liveIslBusy = false;
+  final _islLive = IslLiveRecognition();
 
   bool get _hasText => _textController.text.trim().isNotEmpty;
 
@@ -56,7 +52,7 @@ class _SignToTextScreenState extends State<SignToTextScreen> {
     super.initState();
     _textController.addListener(() {
       setState(() {
-        _signPlan = TextToSignReference.planForText(_textController.text);
+        _textToSignHint = TextToSignReference.hintForText(_textController.text);
       });
     });
   }
@@ -76,14 +72,9 @@ class _SignToTextScreenState extends State<SignToTextScreen> {
   }
 
   void _stopLiveIsl() {
-    _browserGeneration++;
-    _browserPoll?.cancel();
-    _browserPoll = null;
-    _islBrowser.stop();
+    _liveIslTimer?.cancel();
+    _liveIslTimer = null;
     _liveIslActive = false;
-    _oneShotWaiting = false;
-    _browserStarting = false;
-    _recognitionBusy = false;
   }
 
   void _toggleLiveIsl(bool on) {
@@ -93,122 +84,41 @@ class _SignToTextScreenState extends State<SignToTextScreen> {
     }
     if (!on) {
       _stopLiveIsl();
-      if (mounted) setState(() => _recognitionStatus = 'Live recognition stopped.');
+      SignTalkScope.of(context).islRecognition.resetSmoothing();
+      setState(() {});
       return;
     }
-    if (_isPaused) {
-      _showSnack('Resume the camera before recognizing.');
+    if (!_islLive.isSupported) {
+      _showSnack('Live ISL needs Flutter Web (Chrome).');
       return;
     }
-    unawaited(_startBrowserRecognition(live: true));
+    _liveIslActive = true;
+    _liveIslTimer?.cancel();
+    _liveIslTimer = Timer.periodic(const Duration(milliseconds: 900), (_) => unawaited(_liveIslTick()));
+    setState(() => _recognitionStatus = 'Live ISL — hold an INCLUDE sign steady');
+    unawaited(_liveIslTick());
   }
 
-  Future<void> _startBrowserRecognition({required bool live}) async {
-    if (_browserStarting) return;
-    if (!_islBrowser.isSupported) {
+  Future<void> _liveIslTick() async {
+    if (!_liveIslActive || _liveIslBusy || !_cameraActive) return;
+    _liveIslBusy = true;
+    final isl = SignTalkScope.of(context).islRecognition;
+    final result = await _islLive.recognizeFromVideo(
+      isl: isl,
+      videoElementId: 'signtalk-camera-preview',
+    );
+    if (!mounted) return;
+    _liveIslBusy = false;
+    if (result.isSuccess && result.label != null) {
       setState(() {
-        _recognitionStatus = 'In-browser ISL recognition needs Chrome.';
+        _textController.text = result.label!;
+        _lastTextFromModel = true;
+        _recognitionStatus = 'Recognized (live ISL)';
       });
-      _showSnack(_recognitionStatus!);
-      return;
-    }
-    _browserStarting = true;
-    final generation = ++_browserGeneration;
-    setState(() {
-      _recognitionBusy = !live;
-      _liveIslActive = live;
-      _oneShotWaiting = !live;
-      _recognitionStatus = 'Loading the INCLUDE model…';
-    });
-    final ready = await _islBrowser.init();
-    if (!mounted || generation != _browserGeneration) return;
-    if (!ready) {
-      _browserStarting = false;
-      setState(() {
-        _recognitionBusy = false;
-        _liveIslActive = false;
-        _oneShotWaiting = false;
-        _recognitionStatus = 'The INCLUDE model could not be loaded in this browser.';
-      });
-      _showSnack(_recognitionStatus!);
-      return;
-    }
-    var started = false;
-    for (var attempt = 0; attempt < 24; attempt++) {
-      if (!mounted || generation != _browserGeneration || !_cameraActive || _isPaused) {
-        _browserStarting = false;
-        return;
-      }
-      if (_islBrowser.start(_previewVideoId)) {
-        started = true;
-        break;
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 250));
-    }
-    _browserStarting = false;
-    if (!mounted || generation != _browserGeneration) return;
-    if (!started) {
-      _islBrowser.stop();
-      setState(() {
-        _recognitionBusy = false;
-        _liveIslActive = false;
-        _oneShotWaiting = false;
-        _recognitionStatus = 'The camera preview was not ready for recognition.';
-      });
-      _showSnack(_recognitionStatus!);
-      return;
-    }
-    _browserPoll?.cancel();
-    _browserPoll = Timer.periodic(const Duration(milliseconds: 200), (_) => _pollBrowser());
-    setState(() {
-      _recognitionBusy = false;
-      _recognitionStatus = live
-          ? 'INCLUDE model ready. Hold each sign for about two seconds.'
-          : 'Hold one sign for about two seconds.';
-    });
-    if (!live) {
-      Future<void>.delayed(const Duration(seconds: 6), () {
-        if (!mounted || generation != _browserGeneration || !_oneShotWaiting) return;
-        _oneShotWaiting = false;
-        if (!_liveIslActive) {
-          _islBrowser.stop();
-          _browserPoll?.cancel();
-          _browserPoll = null;
-        }
-        setState(() => _recognitionStatus = 'No sign recognized. Hold the sign steady and try again.');
-      });
-    }
-  }
-
-  void _pollBrowser() {
-    if (!_liveIslActive && !_oneShotWaiting) return;
-    if (_isPaused) return;
-    final hit = _islBrowser.consume();
-    if (hit == null || !mounted) return;
-    if (hit.status == 'error') {
-      setState(() => _recognitionStatus = hit.message ?? 'Recognition error.');
-      return;
-    }
-    if (hit.status == 'tracking') {
-      setState(() => _recognitionStatus = 'Watching for a sign. Hold it for about two seconds.');
-      return;
-    }
-    if (!hit.isRecognized) return;
-    final word = hit.word!;
-    setState(() {
-      _textController.text = word;
-      _lastTextFromModel = true;
-      _recognitionStatus = 'Recognized: $word';
-    });
-    if (_oneShotWaiting) {
-      _oneShotWaiting = false;
-      _recognitionBusy = false;
-      if (!_liveIslActive) {
-        _islBrowser.stop();
-        _browserPoll?.cancel();
-        _browserPoll = null;
-      }
-      _showSnack('Recognized: $word');
+    } else if (result.uncertain) {
+      setState(() => _recognitionStatus = result.message ?? 'Detecting sign…');
+    } else if (result.message != null) {
+      setState(() => _recognitionStatus = result.message);
     }
   }
 
@@ -233,7 +143,6 @@ class _SignToTextScreenState extends State<SignToTextScreen> {
     setState(() => _cameraBusy = true);
 
     if (_cameraActive) {
-      _stopLiveIsl();
       await camera.stop();
       scope.permissionStatus.reportCamera(granted: camera.lastPermissionGranted, detail: 'Camera stopped');
       setState(() {
@@ -256,7 +165,7 @@ class _SignToTextScreenState extends State<SignToTextScreen> {
     final started = await camera.start();
     scope.permissionStatus.reportCamera(
       granted: camera.lastPermissionGranted ?? started,
-      detail: started ? 'Live preview' : camera.lastError,
+      detail: started ? 'Live preview (no sign recognition)' : camera.lastError,
     );
     if (!mounted) return;
     setState(() {
@@ -278,30 +187,36 @@ class _SignToTextScreenState extends State<SignToTextScreen> {
     setState(() => _isPaused = !_isPaused);
     if (_isPaused) {
       camera.pausePreview();
-      _islBrowser.stop();
-      _browserPoll?.cancel();
-      _browserPoll = null;
     } else {
       camera.resumePreview();
-      if (_liveIslActive) unawaited(_startBrowserRecognition(live: true));
     }
   }
 
   Future<void> _tryRecognition() async {
-    if (_recognitionBusy || _browserStarting || _oneShotWaiting) return;
-    if (!_cameraActive) {
-      _showSnack('Start the camera first.');
-      return;
+    if (_recognitionBusy) return;
+    setState(() {
+      _recognitionBusy = true;
+      _recognitionStatus = 'Checking recognition service…';
+    });
+    final isl = SignTalkScope.of(context).islRecognition;
+    final clip = await _islLive.captureClip(videoElementId: 'signtalk-camera-preview');
+    final result = await isl.recognizeClip(jpegFrames: clip);
+    if (!mounted) return;
+    setState(() {
+      _recognitionBusy = false;
+      _recognitionStatus = result.message ?? isl.rawAdapter.displayName;
+      _lastTextFromModel = result.isSuccess;
+      if (result.isSuccess && result.label != null) {
+        _textController.text = result.label!;
+      } else if (result.uncertain) {
+        _recognitionStatus = result.message;
+      }
+    });
+    if (result.isSuccess) {
+      _showSnack('Recognized: ${result.label}');
+    } else {
+      _showSnack(_recognitionStatus ?? 'Recognition unavailable');
     }
-    if (_isPaused) {
-      _showSnack('Resume the camera before recognizing.');
-      return;
-    }
-    if (_liveIslActive && _browserPoll != null) {
-      _showSnack('Live recognition is already watching the camera.');
-      return;
-    }
-    await _startBrowserRecognition(live: false);
   }
 
   void _sendToConversations() {
@@ -322,7 +237,7 @@ class _SignToTextScreenState extends State<SignToTextScreen> {
     final prefs = SignTalkScope.preferencesOf(context);
     final tts = SignTalkScope.of(context).textToSpeech;
     if (!_hasText) {
-      _showSnack('Enter text to speak, or recognize a sign first.');
+      _showSnack('Enter text to speak. Sign recognition is not active.');
       return;
     }
     if (!prefs.spokenOutputEnabled) {
@@ -358,9 +273,7 @@ class _SignToTextScreenState extends State<SignToTextScreen> {
   @override
   Widget build(BuildContext context) {
     final tts = SignTalkScope.of(context).textToSpeech;
-    final browserStatus = _islBrowser.isSupported
-        ? 'INCLUDE model in this browser, 262 words'
-        : 'In-browser ISL needs Chrome';
+    final islAdapter = SignTalkScope.of(context).islRecognition.rawAdapter;
 
     return ListenableBuilder(
       listenable: tts,
@@ -370,11 +283,10 @@ class _SignToTextScreenState extends State<SignToTextScreen> {
       children: [
         _ScreenHeader(
           onBack: widget.onBack,
-          onSettings: widget.onOpenSettings ??
-              () => _showSnack('Sign to Text settings are not available yet.'),
+          onSettings: widget.onOpenSettings ?? () => _showSnack('Sign to Text settings are not available yet.'),
         ),
         const SizedBox(height: 8),
-        _InfoPill(status: browserStatus),
+        _InfoPill(status: islAdapter.displayName),
         if (_recognitionStatus != null) ...[
           const SizedBox(height: 8),
           Text(_recognitionStatus!, style: Theme.of(context).textTheme.bodySmall),
@@ -401,9 +313,7 @@ class _SignToTextScreenState extends State<SignToTextScreen> {
         ),
         const SizedBox(height: 10),
         OutlinedButton.icon(
-          onPressed: _recognitionBusy || _oneShotWaiting || _browserStarting || !_cameraActive
-              ? null
-              : () => unawaited(_tryRecognition()),
+          onPressed: _recognitionBusy || !_cameraActive ? null : () => unawaited(_tryRecognition()),
           icon: _recognitionBusy
               ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
               : const Icon(Icons.back_hand_outlined),
@@ -413,7 +323,7 @@ class _SignToTextScreenState extends State<SignToTextScreen> {
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('Live ISL recognition'),
-          subtitle: const Text('Uses the INCLUDE model in this browser while the camera is on'),
+          subtitle: const Text('Polls INCLUDE sidecar while camera is on'),
           value: _liveIslActive,
           onChanged: _cameraActive ? _toggleLiveIsl : null,
         ),
@@ -426,9 +336,9 @@ class _SignToTextScreenState extends State<SignToTextScreen> {
           onSpeak: () => unawaited(_speakText()),
           onStopSpeak: () => unawaited(tts.stop()),
         ),
-        if (_signPlan.isNotEmpty) ...[
+        if (_textToSignHint != null) ...[
           const SizedBox(height: 12),
-          SignPlanCard(steps: _signPlan),
+          _TextToSignReferenceCard(hint: _textToSignHint!),
         ],
         const SizedBox(height: 10),
         FilledButton.icon(
@@ -495,6 +405,36 @@ class _ScreenHeader extends StatelessWidget {
   }
 }
 
+class _TextToSignReferenceCard extends StatelessWidget {
+  const _TextToSignReferenceCard({required this.hint});
+
+  final String hint;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: SignTalkColors.tintBlue,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: SignTalkColors.tintBlueBorder),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Text-to-sign reference (glossary)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+            const SizedBox(height: 4),
+            Text(TextToSignReference.limitationMessage, style: Theme.of(context).textTheme.bodySmall),
+            const SizedBox(height: 6),
+            Text(hint, style: const TextStyle(fontSize: 13)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _InfoPill extends StatelessWidget {
   const _InfoPill({required this.status});
 
@@ -511,7 +451,7 @@ class _InfoPill extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Text(
-          status,
+          'Preview only · $status',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
