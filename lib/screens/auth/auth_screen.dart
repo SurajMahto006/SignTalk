@@ -25,7 +25,7 @@ class _AuthScreenState extends State<AuthScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
-  String _selectedPersonStatus = 'Normal';
+  String _selectedPersonStatus = 'Normal person';
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
@@ -35,6 +35,8 @@ class _AuthScreenState extends State<AuthScreen> {
   bool? _isUserIdAvailable;
 
   static const _personStatuses = [
+    'Normal person',
+    'Hearing',
     'Mute',
     'Deaf',
     'Hard of hearing',
@@ -43,7 +45,6 @@ class _AuthScreenState extends State<AuthScreen> {
     'Low vision',
     'Non-speaking',
     'Speech difficulty',
-    'Hearing',
     'Normal',
     'Prefer not to say',
   ];
@@ -745,9 +746,41 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
+  Future<void> _handleGoogleSignIn() async {
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      backgroundColor: Colors.white,
+      builder: (sheetContext) => _GoogleAccountChooserSheet(
+        onSelectAccount: (email, name) async {
+          Navigator.pop(sheetContext);
+          setState(() {
+            _isLoading = true;
+            _errorMessage = null;
+          });
+          try {
+            final res = await AuthService.instance.signInWithGoogle(
+              email: email,
+              name: name,
+              role: _selectedPersonStatus,
+            );
+            if (!mounted) return;
+            if (!res.success) {
+              setState(() => _errorMessage = res.message);
+            }
+          } finally {
+            if (mounted) setState(() => _isLoading = false);
+          }
+        },
+      ),
+    );
+  }
+
   Widget _buildGoogleButton() {
     return OutlinedButton.icon(
-      onPressed: _isLoading ? null : _showAuthSetupMessage,
+      onPressed: _isLoading ? null : _handleGoogleSignIn,
       style: OutlinedButton.styleFrom(
         minimumSize: const Size.fromHeight(48),
         backgroundColor: Colors.white,
@@ -1081,4 +1114,264 @@ class _AuthHeroPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _GoogleAccountChooserSheet extends StatefulWidget {
+  const _GoogleAccountChooserSheet({required this.onSelectAccount});
+
+  final void Function(String email, String name) onSelectAccount;
+
+  @override
+  State<_GoogleAccountChooserSheet> createState() =>
+      _GoogleAccountChooserSheetState();
+}
+
+class _GoogleAccountChooserSheetState
+    extends State<_GoogleAccountChooserSheet> {
+  final _customEmailController = TextEditingController();
+  final _customNameController = TextEditingController();
+  bool _showCustom = false;
+
+  @override
+  void dispose() {
+    _customEmailController.dispose();
+    _customNameController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 16,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Row(
+              children: [
+                GoogleLogo(size: 26),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Sign in with Google',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF202124),
+                        ),
+                      ),
+                      Text(
+                        'Choose an account to continue to SignTalk',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: Color(0xFF5F6368),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Divider(height: 1),
+            const SizedBox(height: 10),
+            // Primary preset account
+            InkWell(
+              onTap: () => widget.onSelectAccount(
+                'surajmahto01062005@gmail.com',
+                'Suraj Mahto',
+              ),
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundColor: SignTalkColors.primaryBlue,
+                      child: const Text(
+                        'S',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Suraj Mahto',
+                            style: TextStyle(
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF202124),
+                            ),
+                          ),
+                          Text(
+                            'surajmahto01062005@gmail.com',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: Color(0xFF5F6368),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: Color(0xFF5F6368),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Secondary demo google account
+            InkWell(
+              onTap: () => widget.onSelectAccount(
+                'demo.signtalk@gmail.com',
+                'SignTalk Demo User',
+              ),
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundColor: Colors.teal.shade700,
+                      child: const Text(
+                        'D',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'SignTalk Demo User',
+                            style: TextStyle(
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF202124),
+                            ),
+                          ),
+                          Text(
+                            'demo.signtalk@gmail.com',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: Color(0xFF5F6368),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: Color(0xFF5F6368),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (!_showCustom) ...[
+              InkWell(
+                onTap: () => setState(() => _showCustom = true),
+                borderRadius: BorderRadius.circular(12),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                  child: Row(
+                    children: [
+                      Icon(Icons.person_add_alt, size: 22, color: Color(0xFF1A73E8)),
+                      SizedBox(width: 14),
+                      Text(
+                        'Use another Google account',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1A73E8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ] else ...[
+              const SizedBox(height: 8),
+              TextField(
+                controller: _customNameController,
+                decoration: const InputDecoration(
+                  labelText: 'Your Name',
+                  hintText: 'Enter your name',
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _customEmailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'Google Email',
+                  hintText: 'user@gmail.com',
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: () {
+                  final email = _customEmailController.text.trim();
+                  final name = _customNameController.text.trim();
+                  if (email.isNotEmpty && email.contains('@')) {
+                    widget.onSelectAccount(
+                      email,
+                      name.isNotEmpty ? name : email.split('@').first,
+                    );
+                  }
+                },
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF1A73E8),
+                ),
+                child: const Text('Continue with this account'),
+              ),
+            ],
+            const SizedBox(height: 12),
+            const Text(
+              'To continue, Google will share your name, email address, and language preference with SignTalk.',
+              style: TextStyle(fontSize: 11, color: Color(0xFF70757A)),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

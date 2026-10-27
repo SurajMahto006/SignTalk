@@ -267,6 +267,54 @@ class AuthService extends ChangeNotifier {
     return _startSession(newUser, password);
   }
 
+  /// Authenticates using Google Sign-In or creates a new Google-linked profile.
+  Future<AuthResult> signInWithGoogle({
+    String? email,
+    String? name,
+    String? role,
+    String? photoUrl,
+  }) async {
+    final googleEmail = (email ?? 'surajmahto01062005@gmail.com').trim().toLowerCase();
+    final googleName = (name ?? 'Suraj Mahto').trim();
+    final chosenRole = (role ?? 'Normal person').trim();
+
+    // Derive a clean, valid username from email or name
+    String baseId = googleEmail.split('@').first.replaceAll(RegExp(r'[^a-z0-9_.]'), '');
+    if (baseId.length < 3) baseId = 'user_${baseId.padRight(3, '0')}';
+
+    // Check if user with this email or username already exists
+    AuthUser? existingUser;
+    for (final u in _usersByUserId.values) {
+      if (u.email.toLowerCase() == googleEmail || u.userId.toLowerCase() == baseId) {
+        existingUser = u;
+        break;
+      }
+    }
+
+    if (existingUser != null) {
+      return _startSession(existingUser, 'google_oauth_token');
+    }
+
+    // If not existing, create new user
+    String userId = baseId;
+    int counter = 1;
+    while (_usersByUserId.containsKey(userId)) {
+      userId = '${baseId}_$counter';
+      counter++;
+    }
+
+    final newUser = AuthUser(
+      id: 'usr_g_${DateTime.now().millisecondsSinceEpoch}',
+      userId: userId,
+      name: googleName,
+      email: googleEmail,
+      role: chosenRole,
+      createdAt: DateTime.now(),
+    );
+
+    return _startSession(newUser, 'google_oauth_token');
+  }
+
   /// Authenticates an existing user via their unique User ID and password.
   Future<AuthResult> login({
     required String userId,

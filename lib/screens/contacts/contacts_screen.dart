@@ -61,6 +61,9 @@ class _ContactsScreenState extends State<ContactsScreen>
             ),
           );
         },
+        onOpenVideoCall: (contactName) {
+          widget.onOpenVideoCall(contactName);
+        },
       ),
     );
   }
@@ -468,6 +471,12 @@ class _ContactsScreenState extends State<ContactsScreen>
                   );
                 }
               },
+              onAcceptAndCall: () async {
+                await service.acceptRequest(req.id);
+                if (mounted) {
+                  widget.onOpenVideoCall(req.user.name);
+                }
+              },
               onDecline: () async {
                 await service.declineRequest(req.id);
                 if (mounted) {
@@ -527,6 +536,12 @@ class _ContactsScreenState extends State<ContactsScreen>
                       backgroundColor: SignTalkColors.successGreen,
                     ),
                   );
+                }
+              },
+              onSimulateAcceptAndCall: () async {
+                await service.simulateAcceptOutgoingRequest(req.id);
+                if (mounted) {
+                  widget.onOpenVideoCall(req.user.name);
                 }
               },
             ),
@@ -782,11 +797,13 @@ class _IncomingRequestCard extends StatelessWidget {
     required this.request,
     required this.onAccept,
     required this.onDecline,
+    this.onAcceptAndCall,
   });
 
   final ContactRequest request;
   final VoidCallback onAccept;
   final VoidCallback onDecline;
+  final VoidCallback? onAcceptAndCall;
 
   @override
   Widget build(BuildContext context) {
@@ -860,33 +877,32 @@ class _IncomingRequestCard extends StatelessWidget {
           const SizedBox(height: 12),
           Row(
             children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: onDecline,
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: SignTalkColors.border),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
+              OutlinedButton(
+                onPressed: onDecline,
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: SignTalkColors.border),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Text(
-                    'Decline',
-                    style: TextStyle(
-                      color: SignTalkColors.secondaryText,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                ),
+                child: const Text(
+                  'Decline',
+                  style: TextStyle(
+                    color: SignTalkColors.secondaryText,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
-                child: FilledButton.icon(
+                child: OutlinedButton.icon(
                   onPressed: onAccept,
-                  icon: const Icon(Icons.check, size: 17),
+                  icon: const Icon(Icons.check, size: 16),
                   label: const Text('Accept'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: SignTalkColors.primaryBlue,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: SignTalkColors.primaryBlue,
+                    side: const BorderSide(color: SignTalkColors.primaryBlue),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -894,6 +910,23 @@ class _IncomingRequestCard extends StatelessWidget {
                   ),
                 ),
               ),
+              if (onAcceptAndCall != null) ...[
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: onAcceptAndCall,
+                    icon: const Icon(Icons.videocam_rounded, size: 16),
+                    label: const Text('Accept & Call'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: SignTalkColors.successGreen,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ],
@@ -908,11 +941,13 @@ class _OutgoingRequestCard extends StatelessWidget {
     required this.request,
     required this.onCancel,
     required this.onSimulateAccept,
+    this.onSimulateAcceptAndCall,
   });
 
   final ContactRequest request;
   final VoidCallback onCancel;
   final VoidCallback onSimulateAccept;
+  final VoidCallback? onSimulateAcceptAndCall;
 
   @override
   Widget build(BuildContext context) {
@@ -994,9 +1029,9 @@ class _OutgoingRequestCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 const Expanded(
                   child: Text(
-                    'Simulate ${''}: Opposite person accepts your request',
+                    'Simulate accept from opposite user:',
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 11.5,
                       color: Color(0xFF92400E),
                       fontWeight: FontWeight.w600,
                     ),
@@ -1008,7 +1043,7 @@ class _OutgoingRequestCard extends StatelessWidget {
                     backgroundColor: const Color(0xFFD97706),
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
+                      horizontal: 8,
                       vertical: 4,
                     ),
                     minimumSize: Size.zero,
@@ -1018,10 +1053,34 @@ class _OutgoingRequestCard extends StatelessWidget {
                     ),
                   ),
                   child: const Text(
-                    'Accept Now',
+                    'Accept',
                     style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
                   ),
                 ),
+                if (onSimulateAcceptAndCall != null) ...[
+                  const SizedBox(width: 6),
+                  TextButton.icon(
+                    onPressed: onSimulateAcceptAndCall,
+                    icon: const Icon(Icons.videocam_rounded, size: 13, color: Colors.white),
+                    label: const Text(
+                      'Accept & Call',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
+                    style: TextButton.styleFrom(
+                      backgroundColor: SignTalkColors.successGreen,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1036,10 +1095,12 @@ class _AddContactModal extends StatefulWidget {
   const _AddContactModal({
     required this.contactsService,
     required this.onContactAccepted,
+    this.onOpenVideoCall,
   });
 
   final ContactsService contactsService;
   final ValueChanged<String> onContactAccepted;
+  final ValueChanged<String>? onOpenVideoCall;
 
   @override
   State<_AddContactModal> createState() => _AddContactModalState();
@@ -1278,64 +1339,94 @@ class _AddContactModalState extends State<_AddContactModal> {
                               ),
                             ),
                             if (isAlreadyContact) ...[
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFE8FAF4),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.check_circle,
-                                      size: 14,
-                                      color: Color(0xFF0D9F76),
-                                    ),
-                                    SizedBox(width: 4),
-                                    Text(
-                                      'Connected',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w700,
-                                        color: Color(0xFF0D9F76),
-                                      ),
-                                    ),
-                                  ],
+                              FilledButton.icon(
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  if (widget.onOpenVideoCall != null) {
+                                    widget.onOpenVideoCall!(user.name);
+                                  } else {
+                                    widget.onContactAccepted(user.name);
+                                  }
+                                },
+                                icon: const Icon(Icons.videocam_rounded, size: 15),
+                                label: const Text('Call Now'),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: SignTalkColors.primaryBlue,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
                                 ),
                               ),
                             ] else if (isPending) ...[
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFFFBEB),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.schedule,
-                                      size: 14,
-                                      color: Color(0xFFD97706),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 5,
                                     ),
-                                    SizedBox(width: 4),
-                                    Text(
-                                      'Pending',
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFFFBEB),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: const Text(
+                                      'Requested',
                                       style: TextStyle(
-                                        fontSize: 11,
+                                        fontSize: 10.5,
                                         fontWeight: FontWeight.w700,
                                         color: Color(0xFFD97706),
                                       ),
                                     ),
-                                  ],
-                                ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  FilledButton(
+                                    onPressed: () async {
+                                      final req = widget.contactsService
+                                          .outgoingRequests
+                                          .firstWhere(
+                                        (r) => r.user.username == user.username,
+                                        orElse: () => widget.contactsService.outgoingRequests.first,
+                                      );
+                                      await widget.contactsService
+                                          .simulateAcceptOutgoingRequest(req.id);
+                                      setState(() {});
+                                      if (context.mounted) {
+                                        Navigator.pop(context);
+                                        if (widget.onOpenVideoCall != null) {
+                                          widget.onOpenVideoCall!(user.name);
+                                        } else {
+                                          widget.onContactAccepted(user.name);
+                                        }
+                                      }
+                                    },
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: SignTalkColors.successGreen,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 6,
+                                      ),
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      'Accept & Call 📞',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ] else ...[
                               FilledButton.icon(

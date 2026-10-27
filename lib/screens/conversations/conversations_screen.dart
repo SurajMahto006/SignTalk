@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/sign_talk_scope.dart';
 import '../../services/auth/auth_service.dart';
+import '../../services/contacts/contact_item.dart';
 import '../../services/isl/text_to_sign_reference.dart';
 import '../../services/speech/speech_recognition_service.dart';
 import '../../services/speech/text_to_speech_service.dart';
@@ -333,7 +334,15 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
         ),
         Expanded(
           child: _messages.isEmpty
-              ? const _EmptyConversation()
+              ? _EmptyConversation(
+                  contactName: widget.contactName,
+                  onVideoCall: widget.onOpenVideoCall,
+                  onSayHello: () {
+                    _inputController.text =
+                        'Hello! I am using SignTalk to communicate.';
+                    unawaited(_sendMessage());
+                  },
+                )
               : ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
@@ -416,6 +425,21 @@ class _ConversationsHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    ContactItem? contact;
+    try {
+      final contacts = SignTalkScope.contactsOf(context).savedContacts;
+      final clean = contactName.replaceAll('@', '').toLowerCase().trim();
+      contact = contacts.cast<ContactItem?>().firstWhere(
+        (c) =>
+            c?.name.toLowerCase().trim() == clean ||
+            c?.username.toLowerCase().trim() == clean,
+        orElse: () => null,
+      );
+    } catch (_) {}
+
+    final displayHandle = contact?.displayHandle ??
+        '@${contactName.toLowerCase().replaceAll(RegExp(r'\s+'), '_')}';
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 10, 12, 12),
       child: Row(
@@ -425,33 +449,86 @@ class _ConversationsHeader extends StatelessWidget {
             tooltip: 'Back to Home',
             onPressed: onBack,
           ),
-          const SizedBox(width: 12),
-          _ContactAvatar(name: contactName),
+          const SizedBox(width: 10),
+          _ContactAvatar(name: contactName, isOnline: true),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  contactName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    color: SignTalkColors.primaryText,
-                  ),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        contactName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 16.5,
+                          fontWeight: FontWeight.w800,
+                          color: SignTalkColors.primaryText,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 1.5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: SignTalkColors.blueTint,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Text(
+                        'Saved',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: SignTalkColors.primaryBlue,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 2),
-                const Row(
+                Row(
                   children: [
-                    _OfflineDot(),
-                    SizedBox(width: 5),
-                    Text(
-                      'Offline',
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: SignTalkColors.successGreen,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: SignTalkColors.successGreen
+                                .withValues(alpha: 0.5),
+                            blurRadius: 4,
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                    const Text(
+                      'Online',
                       style: TextStyle(
                         fontSize: 12,
-                        color: SignTalkColors.secondaryText,
+                        fontWeight: FontWeight.w700,
+                        color: SignTalkColors.successGreen,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        displayHandle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          color: SignTalkColors.secondaryText,
+                        ),
                       ),
                     ),
                   ],
@@ -460,11 +537,36 @@ class _ConversationsHeader extends StatelessWidget {
             ),
           ),
           _HeaderIconButton(
-            icon: Icons.videocam_rounded,
-            tooltip: 'Start video call',
-            onPressed: onVideoCall,
+            icon: Icons.phone_in_talk_rounded,
+            tooltip: 'Audio call $contactName',
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Row(
+                    children: [
+                      const Icon(Icons.phone_in_talk, color: Colors.white, size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Calling $contactName ($displayHandle)... Ringing...',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                  backgroundColor: SignTalkColors.primaryBlue,
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            },
           ),
           const SizedBox(width: 8),
+          _HeaderIconButton(
+            icon: Icons.videocam_rounded,
+            tooltip: 'Video call $contactName',
+            onPressed: onVideoCall,
+          ),
+          const SizedBox(width: 6),
           _HeaderIconButton(
             icon: Icons.more_vert_rounded,
             tooltip: 'Conversation options',
@@ -496,11 +598,11 @@ class _HeaderIconButton extends StatelessWidget {
         onTap: onPressed,
         customBorder: const CircleBorder(),
         child: SizedBox(
-          width: 46,
-          height: 46,
+          width: 44,
+          height: 44,
           child: Tooltip(
             message: tooltip,
-            child: Icon(icon, color: SignTalkColors.primaryBlue, size: 21),
+            child: Icon(icon, color: SignTalkColors.primaryBlue, size: 20),
           ),
         ),
       ),
@@ -509,9 +611,10 @@ class _HeaderIconButton extends StatelessWidget {
 }
 
 class _ContactAvatar extends StatelessWidget {
-  const _ContactAvatar({required this.name});
+  const _ContactAvatar({required this.name, this.isOnline = true});
 
   final String name;
+  final bool isOnline;
 
   @override
   Widget build(BuildContext context) {
@@ -522,32 +625,58 @@ class _ContactAvatar extends StatelessWidget {
         .take(2)
         .map((word) => word[0].toUpperCase())
         .join();
-    return CircleAvatar(
-      radius: 29,
-      backgroundColor: SignTalkColors.primaryBlue,
-      child: Text(
-        initials.isEmpty ? '?' : initials,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 17,
-          fontWeight: FontWeight.w800,
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        CircleAvatar(
+          radius: 23,
+          backgroundColor: SignTalkColors.primaryBlue,
+          child: Text(
+            initials.isEmpty ? '?' : initials,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
         ),
-      ),
+        if (isOnline)
+          Positioned(
+            right: -1,
+            bottom: -1,
+            child: Container(
+              width: 13,
+              height: 13,
+              decoration: BoxDecoration(
+                color: SignTalkColors.successGreen,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
 
-class _OfflineDot extends StatelessWidget {
-  const _OfflineDot();
+class _OnlineDot extends StatelessWidget {
+  const _OnlineDot();
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: 8,
       height: 8,
-      decoration: const BoxDecoration(
-        color: SignTalkColors.secondaryText,
+      decoration: BoxDecoration(
+        color: SignTalkColors.successGreen,
         shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: SignTalkColors.successGreen.withValues(alpha: 0.5),
+            blurRadius: 4,
+            spreadRadius: 1,
+          ),
+        ],
       ),
     );
   }
@@ -1091,10 +1220,19 @@ class _ModePill extends StatelessWidget {
 }
 
 class _EmptyConversation extends StatelessWidget {
-  const _EmptyConversation();
+  const _EmptyConversation({
+    this.contactName,
+    this.onVideoCall,
+    this.onSayHello,
+  });
+
+  final String? contactName;
+  final VoidCallback? onVideoCall;
+  final VoidCallback? onSayHello;
 
   @override
   Widget build(BuildContext context) {
+    final name = contactName ?? 'your contact';
     return Center(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
@@ -1103,34 +1241,103 @@ class _EmptyConversation extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const _ConversationIllustration(),
-              const SizedBox(height: 10),
-              RichText(
-                textAlign: TextAlign.center,
-                text: const TextSpan(
-                  style: TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w800,
-                    color: SignTalkColors.primaryText,
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: SignTalkColors.successGreen.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: SignTalkColors.successGreen.withValues(alpha: 0.3),
                   ),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    TextSpan(text: 'Start the '),
-                    TextSpan(
-                      text: 'Conversation',
-                      style: TextStyle(color: SignTalkColors.primaryBlue),
+                    _OnlineDot(),
+                    SizedBox(width: 6),
+                    Text(
+                      'Connected • Online in your account',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: SignTalkColors.successGreen,
+                      ),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 12),
-              const Text(
-                'No messages yet. Use Speech to Text or type here.\n'
-                'Enable “Speak aloud after send” for the demo flow.',
+              RichText(
                 textAlign: TextAlign.center,
-                style: TextStyle(
+                text: TextSpan(
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: SignTalkColors.primaryText,
+                  ),
+                  children: [
+                    const TextSpan(text: 'Chat & Call with '),
+                    TextSpan(
+                      text: name,
+                      style: const TextStyle(color: SignTalkColors.primaryBlue),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'This contact is saved in your SignTalk account.\n'
+                'Make a live video call with ISL sign translation or send a message below.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
                   color: SignTalkColors.secondaryText,
-                  fontSize: 14,
+                  fontSize: 13.5,
                   height: 1.45,
                 ),
+              ),
+              const SizedBox(height: 18),
+              Wrap(
+                spacing: 12,
+                runSpacing: 10,
+                alignment: WrapAlignment.center,
+                children: [
+                  if (onVideoCall != null)
+                    FilledButton.icon(
+                      onPressed: onVideoCall,
+                      icon: const Icon(Icons.videocam_rounded, size: 18),
+                      label: Text('Video Call $name'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: SignTalkColors.primaryBlue,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                  if (onSayHello != null)
+                    OutlinedButton.icon(
+                      onPressed: onSayHello,
+                      icon: const Icon(
+                        Icons.waving_hand_rounded,
+                        size: 17,
+                        color: Color(0xFFF5A623),
+                      ),
+                      label: const Text('Say Hello 👋'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ],
           ),
